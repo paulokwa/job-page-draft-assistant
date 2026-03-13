@@ -1,0 +1,116 @@
+// modules/provider.js
+// Unified AI provider abstraction — OpenAI, Gemini, Ollama, Mock.
+
+
+
+
+/**
+ * Calls the configured AI provider with system + user prompts.
+ * @param {string} systemPrompt
+ * @param {string} userPrompt
+ * @param {object} settings - { provider, apiKey, modelName, endpoint }
+ * @returns {Promise<string>} - The AI response text
+ */
+export async function callAI(systemPrompt, userPrompt, settings) {
+  const { provider, apiKey, modelName, endpoint } = settings;
+
+  switch (provider) {
+    case 'mock':     return callMock(systemPrompt, userPrompt, settings);
+    case 'openai':   return callOpenAI(systemPrompt, userPrompt, apiKey, modelName || 'gpt-4o');
+    case 'gemini':   return callGemini(systemPrompt, userPrompt, apiKey, modelName || 'gemini-1.5-pro');
+    case 'ollama':   return callOllama(systemPrompt, userPrompt, endpoint || 'http://localhost:11434', modelName || 'llama3');
+    default:
+      throw new Error(`Unknown AI provider: "${provider}". Please check your settings.`);
+  }
+}
+
+// ── Mock (local, no API) ──────────────────────────────────────────────────
+
+async function callMock(systemPrompt, userPrompt, settings) {
+  // Mock routing is handled higher up in drafting.js via isMock().
+  // This fallback handles any direct callAI() calls (e.g. test connection,
+  // detectSpecialInstructionsAI) that happen to reach here in mock mode.
+  return '[Mock Mode] Simulated AI response. No real API was called.';
+}
+
+// ── OpenAI ────────────────────────────────────────────────────────────────
+
+async function callOpenAI(systemPrompt, userPrompt, apiKey, model) {
+  if (!apiKey) throw new Error('OpenAI API key is not set. Please configure it in Settings.');
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userPrompt },
+      ],
+      temperature: 0.7,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(`OpenAI error ${response.status}: ${err?.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content?.trim() || '';
+}
+
+// ── Gemini ────────────────────────────────────────────────────────────────
+
+async function callGemini(systemPrompt, userPrompt, apiKey, model) {
+  if (!apiKey) throw new Error('Gemini API key is not set. Please configure it in Settings.');
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userPrompt }] }],
+      generationConfig: { temperature: 0.7 },
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(`Gemini error ${response.status}: ${err?.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+}
+
+// ── Ollama (local) ────────────────────────────────────────────────────────
+
+async function callOllama(systemPrompt, userPrompt, endpoint, model) {
+  const url = endpoint.replace(/\/$/, '') + '/api/chat';
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userPrompt },
+      ],
+      stream: false,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama error ${response.status}: ${response.statusText}. Is Ollama running at ${endpoint}?`);
+  }
+
+  const data = await response.json();
+  return data.message?.content?.trim() || '';
+}

@@ -1,0 +1,153 @@
+// modules/extraction.js
+// Parses raw job page text to extract structured job fields and detect special instructions.
+
+/**
+ * Attempts to extract structured job fields from raw text.
+ * @param {string} rawText - The raw text from the page or selection
+ * @param {string} url - The source URL
+ * @returns {{ jobTitle, company, location, sourceUrl, description, usedSelection }}
+ */
+export function extractJobFields(rawText, url) {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+
+  let jobTitle = '';
+  let company = '';
+  let location = '';
+
+  // Heuristic patterns for common job posting structure
+  const titlePatterns = [
+    /^job\s*title[:\-–]?\s*(.+)$/i,
+    /^position[:\-–]?\s*(.+)$/i,
+    /^role[:\-–]?\s*(.+)$/i,
+    /^vacancy[:\-–]?\s*(.+)$/i,
+    /^posting\s*title[:\-–]?\s*(.+)$/i,
+  ];
+  const companyPatterns = [
+    /^(?:company|employer|organization|department|ministry|agency|branch)[:\-–]?\s*(.+)$/i,
+    /^(?:employer|hiring\s*organization)[:\-–]?\s*(.+)$/i,
+  ];
+  const locationPatterns = [
+    /^(?:location|city|province|region|work\s*location|place\s*of\s*work)[:\-–]?\s*(.+)$/i,
+    /^(?:work\s*location|duty\s*station)[:\-–]?\s*(.+)$/i,
+  ];
+
+  for (const line of lines) {
+    if (!jobTitle) {
+      for (const pat of titlePatterns) {
+        const m = line.match(pat);
+        if (m) { jobTitle = m[1].trim(); break; }
+      }
+    }
+    if (!company) {
+      for (const pat of companyPatterns) {
+        const m = line.match(pat);
+        if (m) { company = m[1].trim(); break; }
+      }
+    }
+    if (!location) {
+      for (const pat of locationPatterns) {
+        const m = line.match(pat);
+        if (m) { location = m[1].trim(); break; }
+      }
+    }
+    if (jobTitle && company && location) break;
+  }
+
+  // Fallback: use page title for job title if still empty
+  if (!jobTitle) {
+    const urlObj = (() => { try { return new URL(url); } catch { return null; } })();
+    // Job title often appears in first non-empty, non-menu-looking line
+    const firstMeaningfulLine = lines.find(l => l.length > 8 && l.length < 120 && !/^(home|menu|skip|search|login|sign)/i.test(l));
+    if (firstMeaningfulLine) jobTitle = firstMeaningfulLine;
+  }
+
+  return {
+    jobTitle: jobTitle || '',
+    company: company || '',
+    location: location || '',
+    sourceUrl: url || '',
+    description: rawText,
+  };
+}
+
+/**
+ * Scans text for special application instructions.
+ * @param {string} text
+ * @returns {string[]} Array of detected instruction strings
+ */
+export function detectSpecialInstructions(text) {
+  const instructions = [];
+  const lower = text.toLowerCase();
+
+  // Email submission
+  const emailMatches = text.match(/\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g);
+  if (emailMatches) {
+    // Only flag if it appears in context that suggests submission
+    const submissionCtx = /send\s+(?:your\s+)?(?:resume|application|cv|cover)|apply\s+(?:by\s+)?email|email\s+(?:your\s+)?(?:resume|application)|submit.*email/i;
+    if (submissionCtx.test(text)) {
+      const uniqueEmails = [...new Set(emailMatches)];
+      instructions.push(`📧 Submit by email to: ${uniqueEmails.join(', ')}`);
+    }
+  }
+
+  // Closing / deadline dates
+  const deadlinePatterns = [
+    /closing\s+date[:\s]+([^\n.]{3,60})/i,
+    /application\s+deadline[:\s]+([^\n.]{3,60})/i,
+    /applications?\s+(?:must\s+be\s+)?(?:received|submitted)\s+by[:\s]+([^\n.]{3,60})/i,
+    /apply\s+by[:\s]+([^\n.]{3,60})/i,
+    /deadline[:\s]+([^\n.]{3,60})/i,
+    /(?:posted|closes?)[:\s]+([A-Z][a-z]+ \d{1,2},? \d{4})/i,
+  ];
+  for (const pat of deadlinePatterns) {
+    const m = text.match(pat);
+    if (m) {
+      instructions.push(`📅 Deadline: ${m[1].trim()}`);
+      break;
+    }
+  }
+
+  // Reference / competition numbers
+  const refPatterns = [
+    /(?:competition|reference|job|posting|req(?:uisition)?)\s*(?:number|no|#|id)[:\s#]+([A-Z0-9\-_]{3,30})/i,
+    /(?:file|vacancy)\s*(?:number|no|#)[:\s#]+([A-Z0-9\-_]{3,30})/i,
+  ];
+  for (const pat of refPatterns) {
+    const m = text.match(pat);
+    if (m) {
+      instructions.push(`🔢 Reference/Competition #: ${m[1].trim()}`);
+      break;
+    }
+  }
+
+  // Required attachments
+  const attachmentKeywords = [
+    { re: /writing\s+sample/i, label: '📝 A writing sample is required.' },
+    { re: /portfolio/i, label: '🗂 A portfolio is required or requested.' },
+    { re: /references?\s+(?:required|must|list|page)/i, label: '👥 References are required.' },
+    { re: /cover\s+letter\s+(?:is\s+)?(?:required|must)/i, label: '📄 Cover letter explicitly required.' },
+    { re: /transcript/i, label: '🎓 Academic transcript may be required.' },
+    { re: /proof\s+of\s+(?:education|certification|license)/i, label: '📋 Proof of education/certification required.' },
+  ];
+  for (const kw of attachmentKeywords) {
+    if (kw.re.test(text)) instructions.push(kw.label);
+  }
+
+  // Combine-into-one-file instructions
+  if (/combine.*(?:one|single)\s*(?:pdf|file|document)|merge.*documents?/i.test(text)) {
+    instructions.push('📎 Instructions say to combine documents into one file.');
+  }
+
+  // Salary expectation request
+  if (/salary\s+(?:expectation|requirement|history|range)\s+(?:required|requested|include|provide)/i.test(text)) {
+    instructions.push('💰 Salary expectations or history may be requested.');
+  }
+
+  // Subject line requirement
+  const subjectMatch = text.match(/subject\s*(?:line)?[:\s]+["']?([^"'\n]{5,80})["']?/i);
+  if (subjectMatch && /email|send/i.test(text)) {
+    instructions.push(`✉️ Use subject line: "${subjectMatch[1].trim()}"`);
+  }
+
+  return instructions;
+}

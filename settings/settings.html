@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings — Job Page Draft Assistant</title>
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+
+  <header class="settings-header">
+    <div class="header-inner">
+      <div class="logo-mark">✦</div>
+      <div>
+        <h1 class="page-title">Settings</h1>
+        <p class="page-subtitle">Job Page Draft Assistant</p>
+      </div>
+    </div>
+    <div id="save-banner" class="save-banner hidden">✅ Settings saved</div>
+  </header>
+
+  <main class="settings-main">
+    <!-- ── Navigation ── -->
+    <nav class="settings-nav">
+      <button class="nav-btn active" data-section="provider">⚙ AI Provider</button>
+      <button class="nav-btn" data-section="documents">📄 Documents</button>
+      <button class="nav-btn" data-section="templates">📁 Templates</button>
+      <button class="nav-btn" data-section="profile">👤 My Profile</button>
+    </nav>
+
+    <!-- ══════════════════════════════════════════
+         SECTION: AI PROVIDER
+    ══════════════════════════════════════════ -->
+    <section id="section-provider" class="settings-section active">
+      <h2 class="section-title">AI Provider</h2>
+      <p class="section-desc">Choose the AI service that will generate your drafts.</p>
+
+      <div class="card">
+        <div class="field-group">
+          <label for="sel-provider">Provider</label>
+          <select id="sel-provider">
+            <option value="">— Select a provider —</option>
+            <option value="mock">🧪 Mock Mode (dev / no API key needed)</option>
+            <option value="openai">OpenAI (ChatGPT)</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="ollama">Ollama (Local AI)</option>
+          </select>
+        </div>
+
+        <div id="group-apikey" class="field-group hidden">
+          <label for="inp-apikey">API Key</label>
+          <input type="password" id="inp-apikey" placeholder="sk-…  or  AIza…" autocomplete="off" />
+          <p class="field-hint">Your key is stored locally in Chrome and never shared.</p>
+        </div>
+
+        <div class="field-group">
+          <label for="inp-model">Model Name</label>
+          <input type="text" id="inp-model" placeholder="e.g. gpt-4o  /  gemini-1.5-pro  /  llama3" />
+          <p class="field-hint">Leave blank to use the provider default.</p>
+        </div>
+
+        <div id="group-endpoint" class="field-group hidden">
+          <label for="inp-endpoint">Local Endpoint</label>
+          <input type="text" id="inp-endpoint" placeholder="http://localhost:11434" />
+          <p class="field-hint">Only needed for Ollama. Make sure Ollama is running.</p>
+        </div>
+
+        <div id="provider-test-area" class="test-area">
+          <button id="btn-test-provider" class="btn-secondary" type="button">🔌 Test Connection</button>
+          <span id="test-result" class="test-result"></span>
+        </div>
+      </div>
+
+      <button class="btn-save-section" id="btn-save-provider">Save AI Settings</button>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SECTION: DOCUMENT SETTINGS
+    ══════════════════════════════════════════ -->
+    <section id="section-documents" class="settings-section">
+      <h2 class="section-title">Document Settings</h2>
+      <p class="section-desc">Control how drafts are generated and saved.</p>
+
+      <div class="card">
+        <div class="field-group">
+          <label for="sel-default-type">Default Document Mode</label>
+          <select id="sel-default-type">
+            <option value="both">Resume + Cover Letter</option>
+            <option value="resume">Resume Only</option>
+            <option value="cover-letter">Cover Letter Only</option>
+          </select>
+        </div>
+
+        <div class="field-group">
+          <label for="inp-filename-pattern">Filename Pattern</label>
+          <input type="text" id="inp-filename-pattern"
+            placeholder="{docType} - {company} - {jobTitle}" />
+          <p class="field-hint">
+            Variables: <code>{jobTitle}</code> <code>{company}</code> <code>{date}</code> <code>{docType}</code>
+          </p>
+        </div>
+
+        <div class="example-filenames">
+          <strong>Preview:</strong>
+          <span id="filename-preview-1" class="mono"></span><br/>
+          <span id="filename-preview-2" class="mono"></span>
+        </div>
+      </div>
+
+      <button class="btn-save-section" id="btn-save-documents">Save Document Settings</button>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SECTION: TEMPLATES
+    ══════════════════════════════════════════ -->
+    <section id="section-templates" class="settings-section">
+      <h2 class="section-title">Word Templates</h2>
+      <p class="section-desc">
+        Upload your own <strong>.docx</strong> templates with placeholders like
+        <code>{{FULL_NAME}}</code> and <code>{{COVER_LETTER_BODY}}</code>.
+        The AI fills your content into these templates while preserving your design.
+      </p>
+
+      <!-- Resume template -->
+      <div class="card template-card">
+        <div class="template-header">
+          <div>
+            <strong>Resume Template</strong>
+            <p class="field-hint">Should contain placeholders like <code>{{SUMMARY}}</code>, <code>{{EXPERIENCE_1_TITLE}}</code>, etc.</p>
+          </div>
+          <span id="resume-template-badge" class="template-badge hidden">✅ Uploaded</span>
+        </div>
+        <div class="upload-area" id="upload-resume-area">
+          <input type="file" id="inp-resume-template" accept=".docx" class="file-input" />
+          <label for="inp-resume-template" class="upload-label">
+            <span class="upload-icon">📄</span>
+            <span id="resume-upload-text">Click to upload resume template (.docx)</span>
+          </label>
+        </div>
+        <div id="resume-placeholders" class="placeholder-list hidden"></div>
+      </div>
+
+      <!-- Cover letter template -->
+      <div class="card template-card">
+        <div class="template-header">
+          <div>
+            <strong>Cover Letter Template</strong>
+            <p class="field-hint">Should contain <code>{{COVER_LETTER_BODY}}</code> at minimum.</p>
+          </div>
+          <span id="cl-template-badge" class="template-badge hidden">✅ Uploaded</span>
+        </div>
+        <div class="upload-area" id="upload-cl-area">
+          <input type="file" id="inp-cl-template" accept=".docx" class="file-input" />
+          <label for="inp-cl-template" class="upload-label">
+            <span class="upload-icon">✉️</span>
+            <span id="cl-upload-text">Click to upload cover letter template (.docx)</span>
+          </label>
+        </div>
+        <div id="cl-placeholders" class="placeholder-list hidden"></div>
+      </div>
+
+      <!-- Placeholder reference -->
+      <div class="card placeholder-ref">
+        <h3 class="ref-title">📖 Placeholder Reference</h3>
+        <div class="ref-grid">
+          <div>
+            <strong>General</strong>
+            <code>{{FULL_NAME}}</code><code>{{EMAIL}}</code><code>{{PHONE}}</code>
+            <code>{{LINKEDIN}}</code><code>{{PORTFOLIO}}</code>
+          </div>
+          <div>
+            <strong>Resume Sections</strong>
+            <code>{{SUMMARY}}</code><code>{{SKILLS}}</code><code>{{RESUME_BODY}}</code>
+            <code>{{EXPERIENCE_1_TITLE}}</code><code>{{EXPERIENCE_1_COMPANY}}</code>
+            <code>{{EXPERIENCE_1_DATES}}</code><code>{{EXPERIENCE_1_BULLETS}}</code>
+          </div>
+          <div>
+            <strong>Cover Letter</strong>
+            <code>{{DATE}}</code><code>{{HIRING_MANAGER}}</code>
+            <code>{{COMPANY_NAME}}</code><code>{{JOB_TITLE}}</code>
+            <code>{{COVER_LETTER_BODY}}</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════
+         SECTION: PROFILE
+    ══════════════════════════════════════════ -->
+    <section id="section-profile" class="settings-section">
+      <h2 class="section-title">My Profile</h2>
+      <p class="section-desc">The AI uses this data to generate tailored drafts. Fill in as much as possible.</p>
+
+      <!-- Personal Details -->
+      <div class="card">
+        <h3 class="card-sub-title">Personal Details</h3>
+        <div class="form-grid-2">
+          <div class="field-group">
+            <label for="p-name">Full Name *</label>
+            <input type="text" id="p-name" placeholder="Jane Doe" />
+          </div>
+          <div class="field-group">
+            <label for="p-email">Email</label>
+            <input type="email" id="p-email" placeholder="jane@example.com" />
+          </div>
+          <div class="field-group">
+            <label for="p-phone">Phone</label>
+            <input type="tel" id="p-phone" placeholder="+1 902 555 0123" />
+          </div>
+          <div class="field-group">
+            <label for="p-address">City / Province</label>
+            <input type="text" id="p-address" placeholder="Halifax, NS" />
+          </div>
+          <div class="field-group">
+            <label for="p-linkedin">LinkedIn URL</label>
+            <input type="url" id="p-linkedin" placeholder="linkedin.com/in/janedoe" />
+          </div>
+          <div class="field-group">
+            <label for="p-portfolio">Portfolio URL</label>
+            <input type="url" id="p-portfolio" placeholder="janedoe.com" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Summaries -->
+      <div class="card">
+        <h3 class="card-sub-title">Professional Summaries</h3>
+        <p class="field-hint">Store different summary styles. The AI will pick the most relevant one.</p>
+        <div id="summaries-list"></div>
+      </div>
+
+      <!-- Skills -->
+      <div class="card">
+        <h3 class="card-sub-title">Skills Bank</h3>
+        <p class="field-hint">One skill per line. Include soft and technical skills.</p>
+        <textarea id="p-skills" rows="6" placeholder="Client support&#10;Case documentation&#10;Stakeholder communication&#10;Jira&#10;Zendesk&#10;SEO"></textarea>
+      </div>
+
+      <!-- Work Experience -->
+      <div class="card">
+        <h3 class="card-sub-title">Work Experience</h3>
+        <div id="experience-list"></div>
+        <button class="btn-add" id="btn-add-exp" type="button">+ Add Role</button>
+      </div>
+
+      <!-- Education -->
+      <div class="card">
+        <h3 class="card-sub-title">Education</h3>
+        <div id="education-list"></div>
+        <button class="btn-add" id="btn-add-edu" type="button">+ Add Education</button>
+      </div>
+
+      <!-- Certifications -->
+      <div class="card">
+        <h3 class="card-sub-title">Certifications</h3>
+        <div id="certifications-list"></div>
+        <button class="btn-add" id="btn-add-cert" type="button">+ Add Certification</button>
+      </div>
+
+      <!-- Do Not Claim -->
+      <div class="card">
+        <h3 class="card-sub-title">⚠️ Do Not Claim Notes</h3>
+        <p class="field-hint">
+          Tell the AI what it must <strong>not</strong> claim or imply on your behalf.
+          These are hard rules the AI will always follow.
+        </p>
+        <textarea id="p-do-not-claim" rows="4"
+          placeholder="Do not present me as a registered social worker unless explicitly specified.&#10;Do not claim software engineering beyond my actual experience.&#10;Do not say I am licensed unless the job requires it and I have supplied evidence.">
+        </textarea>
+      </div>
+
+      <button class="btn-save-section" id="btn-save-profile">Save Profile</button>
+    </section>
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="../lib/pizzip.js"></script>
+  <script src="../lib/docxtemplater.js"></script>
+  <script type="module" src="settings.js"></script>
+
+</body>
+</html>
