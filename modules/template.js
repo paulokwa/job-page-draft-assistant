@@ -4,31 +4,18 @@
 
 /**
  * Validates a .docx ArrayBuffer and returns detected placeholders.
+ * Uses a native ZIP parser (no PizZip) to avoid the CSP eval() violation
+ * that the webpack-bundled pizzip.js triggers in Chrome MV3 extensions.
  * @param {ArrayBuffer} arrayBuffer
  * @returns {{ placeholders: string[], warnings: string[] }}
  */
 export async function validateTemplate(arrayBuffer) {
-  const { PizZip, Docxtemplater } = getLibs();
-
-  let zip;
+  let xmlContent;
   try {
-    zip = new PizZip(arrayBuffer);
+    xmlContent = await extractXmlFromDocx(arrayBuffer);
   } catch (e) {
     throw new Error('Could not read the file. Make sure it is a valid .docx file.');
   }
-
-  const doc = new Docxtemplater(zip, {
-    paragraphLoop: true,
-    linebreaks: true,
-    // Don't throw on missing tags during validation
-    errorLogging: false,
-  });
-
-  // Extract all XML content and search for {{PLACEHOLDER}} patterns
-  const xmlContent = Object.values(zip.files)
-    .filter(f => f.name.endsWith('.xml'))
-    .map(f => f.asText())
-    .join('\n');
 
   const placeholderRegex = /\{\{([A-Z0-9_]+)\}\}/g;
   const found = new Set();
@@ -50,6 +37,90 @@ export async function validateTemplate(arrayBuffer) {
   });
 
   return { placeholders, warnings };
+}
+
+/**
+ * Extracts all XML text from a .docx (ZIP) ArrayBuffer using pure browser APIs.
+ * Walks the ZIP central directory to find .xml entries and decompresses them
+ * with DecompressionStream — no eval(), no third-party libs.
+ * @param {ArrayBuffer} ab
+ * @returns {Promise<string>}
+ */
+async function extractXmlFromDocx(ab) {
+  const bytes = new Uint8Array(ab);
+  const view  = new DataView(ab);
+  const dec   = new TextDecoder('utf-8', { fatal: false });
+
+  // Find End of Central Directory record (signature 0x06054b50, last in file)
+  let eocdOffset = -1;
+  for (let i = bytes.length - 22; i >= 0; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocdOffset = i; break; }
+  }
+  if (eocdOffset < 0) throw new Error('Not a valid ZIP file');
+
+  const cdOffset = view.getUint32(eocdOffset + 16, true);
+  const cdCount  = view.getUint16(eocdOffset + 10, true);
+
+  const xmlParts = [];
+  let pos = cdOffset;
+
+  for (let i = 0; i < cdCount; i++) {
+    if (view.getUint32(pos, true) !== 0x02014b50) break; // central dir sig
+
+    const compMethod  = view.getUint16(pos + 10, true);
+    const compSize    = view.getUint32(pos + 20, true);
+    const uncompSize  = view.getUint32(pos + 24, true);
+    const nameLen     = view.getUint16(pos + 28, true);
+    const extraLen    = view.getUint16(pos + 30, true);
+    const commentLen  = view.getUint16(pos + 32, true);
+    const localOffset = view.getUint32(pos + 42, true);
+
+    const name = dec.decode(bytes.slice(pos + 46, pos + 46 + nameLen));
+    pos += 46 + nameLen + extraLen + commentLen;
+
+    // Only process .xml files (Word content lives in word/*.xml)
+    if (!name.endsWith('.xml')) continue;
+
+    // Read local file header to find actual data start
+    const localExtraLen = view.getUint16(localOffset + 28, true);
+    const dataStart     = localOffset + 30 + nameLen + localExtraLen;
+    const compData      = bytes.slice(dataStart, dataStart + compSize);
+
+    let text;
+    if (compMethod === 0) {
+      // Stored (no compression)
+      text = dec.decode(compData);
+    } else if (compMethod === 8) {
+      // Deflate — use DecompressionStream (Chrome 80+, always available in MV3)
+      try {
+        const ds     = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        const reader = ds.readable.getReader();
+        writer.write(compData);
+        writer.close();
+        const chunks = [];
+        let done = false;
+        while (!done) {
+          const { value, done: d } = await reader.read();
+          if (value) chunks.push(value);
+          done = d;
+        }
+        const total = chunks.reduce((n, c) => n + c.length, 0);
+        const merged = new Uint8Array(total);
+        let off = 0;
+        for (const c of chunks) { merged.set(c, off); off += c.length; }
+        text = dec.decode(merged);
+      } catch {
+        continue; // skip unreadable entries
+      }
+    } else {
+      continue; // unsupported compression method
+    }
+
+    xmlParts.push(text);
+  }
+
+  return xmlParts.join('\n');
 }
 
 /**
@@ -155,12 +226,21 @@ export function draftToDataMap(draft, profile, jobData, docType) {
     return { ...baseMap, COVER_LETTER_BODY: draft };
   }
 
+  // Full text sections for Smart Mode
+  const smartSections = {
+    SUMMARY: extractSection(draft, ['professional summary', 'summary', 'profile']),
+    SKILLS:  extractSection(draft, ['skills', 'core competencies', 'competencies']),
+    EXPERIENCE: extractSection(draft, ['experience', 'employment history', 'work history', 'professional experience']),
+    EDUCATION: extractSection(draft, ['education', 'academic background']),
+    CERTIFICATIONS: extractSection(draft, ['certifications', 'licenses']),
+    CONTACT: `${baseMap.FULL_NAME}\\n${baseMap.PHONE} | ${baseMap.EMAIL}\\n${baseMap.LINKEDIN} | ${baseMap.PORTFOLIO}`.replace(/^[\\s|]+|[\\s|]+$/g, '').trim(),
+  };
+
   // For resumes: try to map the full draft to SUMMARY + content
   // Advanced: parse sections from draft text
   return {
     ...baseMap,
-    SUMMARY: extractSection(draft, ['professional summary', 'summary', 'profile']),
-    SKILLS:  extractSection(draft, ['skills', 'core competencies', 'competencies']),
+    ...smartSections,
     EXPERIENCE_1_TITLE:   extractFromExperience(draft, 0, 'title'),
     EXPERIENCE_1_COMPANY: extractFromExperience(draft, 0, 'company'),
     EXPERIENCE_1_DATES:   extractFromExperience(draft, 0, 'dates'),

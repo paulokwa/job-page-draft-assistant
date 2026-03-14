@@ -16,8 +16,8 @@ export async function callAI(systemPrompt, userPrompt, settings) {
 
   switch (provider) {
     case 'mock':     return callMock(systemPrompt, userPrompt, settings);
-    case 'openai':   return callOpenAI(systemPrompt, userPrompt, apiKey, modelName || 'gpt-4o');
-    case 'gemini':   return callGemini(systemPrompt, userPrompt, apiKey, modelName || 'gemini-1.5-pro');
+    case 'openai':   return callOpenAI(systemPrompt, userPrompt, apiKey, modelName || 'gpt-4o-mini');
+    case 'gemini':   return callGemini(systemPrompt, userPrompt, apiKey, modelName || 'gemini-2.5-flash');
     case 'ollama':   return callOllama(systemPrompt, userPrompt, endpoint || 'http://localhost:11434', modelName || 'llama3');
     default:
       throw new Error(`Unknown AI provider: "${provider}". Please check your settings.`);
@@ -82,7 +82,26 @@ async function callGemini(systemPrompt, userPrompt, apiKey, model) {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(`Gemini error ${response.status}: ${err?.error?.message || response.statusText}`);
+    let errMsg = err?.error?.message || response.statusText;
+    
+    // Auto-fetch available models if 404 to help the user
+    if (response.status === 404) {
+       try {
+         const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+         const listData = await listRes.json();
+         if (listData && listData.models) {
+            const valid = listData.models
+              .filter(m => m.supportedGenerationMethods?.includes("generateContent"))
+              .map(m => m.name.replace('models/', ''))
+              .slice(0, 10); // Show top 10
+            errMsg += `\n\nValid models detected for your key: ${valid.join(', ')}`;
+         }
+       } catch (e) {
+         // silently fail if we can't fetch models
+       }
+    }
+    
+    throw new Error(`Gemini error ${response.status}: ${errMsg}`);
   }
 
   const data = await response.json();

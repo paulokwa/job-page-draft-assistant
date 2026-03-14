@@ -4,6 +4,7 @@ import { extractJobFields, detectSpecialInstructions } from '../modules/extracti
 import { generateResume, generateCoverLetter, reviseDraft, detectSpecialInstructionsAI } from '../modules/drafting.js';
 import { loadProfile } from '../modules/profile.js';
 import { fillTemplate, fileToArrayBuffer, downloadBlob, buildFilename, draftToDataMap, validateTemplate } from '../modules/template.js';
+import { generateSmartDocument } from '../modules/templateInterpreter.js';
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
@@ -15,8 +16,10 @@ const state = {
   currentTab: 'resume',     // active tab
   drafts: { resume: '', 'cover-letter': '' },
   confirmed: false,
-  settings: null,
+  docSettings: null,
   profile: null,
+  sourceResumeText: '',
+  sourceResumeTemplate: null
 };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────
@@ -69,6 +72,10 @@ const dom = {
 async function init() {
   state.settings = await loadSettings();
   state.profile  = await loadProfile();
+  
+  const localData = await chrome.storage.local.get(['sourceResumeText', 'sourceResumeTemplate']);
+  state.sourceResumeText = localData.sourceResumeText || '';
+  state.sourceResumeTemplate = localData.sourceResumeTemplate || null;
 
   // Show mock mode banner if active
   if (state.settings?.provider === 'mock') {
@@ -122,6 +129,17 @@ function applySession(session) {
   // Run heuristic special instructions immediately
   const hInstructions = detectSpecialInstructions(text);
   renderInstructions(hInstructions);
+
+  // If there's a pending mode from the context menu, trigger generation automatically
+  if (session.pendingMode && text) {
+    // Clear pending mode so it doesn't loop
+    chrome.storage.session.remove('pendingMode').catch(() => {});
+    
+    // Slight delay to let UI settle before kicking off generation
+    setTimeout(() => {
+      runGeneration(session.pendingMode);
+    }, 100);
+  }
 }
 
 function setMode(mode) {
@@ -140,6 +158,24 @@ function setMode(mode) {
 
 // ── Events ────────────────────────────────────────────────────────────────
 function bindEvents() {
+  // Listen for background script updates (e.g. from context menu while panel is open)
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === 'SESSION_UPDATED') {
+      chrome.runtime.sendMessage({ type: 'GET_SESSION' }).then(session => {
+        applySession(session);
+      });
+    }
+  });
+
+  // Listen for settings changes across tabs to update the mock banner dynamically
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.providerSettings) {
+      state.settings = changes.providerSettings.newValue;
+      const isMock = state.settings?.provider === 'mock';
+      dom.mockBanner.classList.toggle('hidden', !isMock);
+    }
+  });
+
   // Settings button
   dom.btnSettings.addEventListener('click', () => {
     chrome.runtime.sendMessage({ type: 'OPEN_SETTINGS' });
@@ -211,9 +247,9 @@ async function runGeneration(mode) {
 
       let draft;
       if (docType === 'resume') {
-        draft = await generateResume(state.jobData, state.profile, state.settings);
+        draft = await generateResume(state.jobData, state.profile, state.settings, state.sourceResumeText);
       } else {
-        draft = await generateCoverLetter(state.jobData, state.profile, state.settings);
+        draft = await generateCoverLetter(state.jobData, state.profile, state.settings, state.sourceResumeText);
       }
 
       state.drafts[docType] = draft;
@@ -401,19 +437,44 @@ async function saveDocs(docTypes) {
 
     // Try using stored template
     const templateKey = docType === 'resume' ? 'resumeTemplate' : 'coverLetterTemplate';
-    const templateB64 = settings[templateKey];
+    const localData = await chrome.storage.local.get([templateKey]);
+    let templateB64 = localData[templateKey];
+
+    // Fallback: If no specific design template is uploaded, use the Source Resume as the layout wrapper.
+    if (!templateB64 && state.sourceResumeTemplate) {
+      templateB64 = state.sourceResumeTemplate;
+      showToast(`ℹ️ No specific Template found. Using your Source Resume as the DOCX template.`);
+    }
 
     if (templateB64) {
       try {
+        // Load PizZip + Docxtemplater lazily — avoids CSP eval() at page load
+        await loadDocxLibs();
         const ab       = base64ToArrayBuffer(templateB64);
-        const dataMap  = draftToDataMap(draft, state.profile, state.jobData, docType);
-        const blob     = await fillTemplate(ab, dataMap);
+        
+        const mode = state.docSettings?.templateMode || 'smart';
+        let blob;
+        
+        if (mode === 'smart') {
+          // dataMap actually has mapped keys like SUMMARY -> content. We can re-use it as sectionsContent!
+          const dataMap  = draftToDataMap(draft, state.profile, state.jobData, docType);
+          const mapping  = (state.docSettings?.templateMapping || {})[docType] || {};
+          
+          blob = await generateSmartDocument(ab, mapping, dataMap);
+        } else {
+          // Legacy advanced placeholders
+          const dataMap  = draftToDataMap(draft, state.profile, state.jobData, docType);
+          blob = await fillTemplate(ab, dataMap);
+        }
+
         downloadBlob(blob, filename);
         showToast(`💾 Saved: ${filename}`);
         continue;
       } catch (e) {
         showToast(`⚠️ Template error: ${e.message}. Saving as plain .txt instead.`);
       }
+    } else {
+      showToast(`⚠️ No .docx Template or Source Resume uploaded. Saving as plain .txt.`);
     }
 
     // Fallback: plain text blob
@@ -458,11 +519,37 @@ function showToast(msg) {
 
 // ── Settings Loader ───────────────────────────────────────────────────────
 async function loadSettings() {
-  const data = await chrome.storage.sync.get('providerSettings');
+  const data = await chrome.storage.sync.get(['providerSettings', 'docSettings']);
+  state.docSettings = data.docSettings || { templateMode: 'smart' };
   return data.providerSettings || null;
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────
+
+/**
+ * Lazily injects pizzip.js and docxtemplater.js as global script tags.
+ * Called only when the user actually saves a .docx — not at page load.
+ * This avoids the CSP eval() violation that the webpack bundles trigger
+ * when parsed eagerly by the browser.
+ */
+let _libsLoaded = false;
+function loadDocxLibs() {
+  if (_libsLoaded) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const inject = (src) => new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload  = res;
+      s.onerror = () => rej(new Error(`Failed to load ${src}`));
+      document.head.appendChild(s);
+    });
+    inject(chrome.runtime.getURL('lib/pizzip.js'))
+      .then(() => inject(chrome.runtime.getURL('lib/docxtemplater.js')))
+      .then(() => { _libsLoaded = true; resolve(); })
+      .catch(reject);
+  });
+}
+
 function base64ToArrayBuffer(b64) {
   const binary = atob(b64);
   const bytes  = new Uint8Array(binary.length);

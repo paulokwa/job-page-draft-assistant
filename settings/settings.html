@@ -51,12 +51,16 @@
           <label for="inp-apikey">API Key</label>
           <input type="password" id="inp-apikey" placeholder="sk-…  or  AIza…" autocomplete="off" />
           <p class="field-hint">Your key is stored locally in Chrome and never shared.</p>
+          <p id="apikey-warning" class="field-hint hidden" style="color: var(--error); margin-top: 4px;">⚠️ An API Key is required to save or test this provider.</p>
         </div>
 
-        <div class="field-group">
-          <label for="inp-model">Model Name</label>
-          <input type="text" id="inp-model" placeholder="e.g. gpt-4o  /  gemini-1.5-pro  /  llama3" />
-          <p class="field-hint">Leave blank to use the provider default.</p>
+        <div class="field-group" id="group-model">
+          <label for="sel-model">Model</label>
+          <select id="sel-model">
+            <!-- Populated dynamically -->
+          </select>
+          <input type="text" id="inp-custom-model" class="hidden" placeholder="Type custom model name..." style="margin-top: 8px;" />
+          <p class="field-hint">Select the AI model, or choose Custom to type your own.</p>
         </div>
 
         <div id="group-endpoint" class="field-group hidden">
@@ -115,18 +119,64 @@
     ══════════════════════════════════════════ -->
     <section id="section-templates" class="settings-section">
       <h2 class="section-title">Word Templates</h2>
-      <p class="section-desc">
+      <p class="section-desc" id="template-desc-smart">
+        Upload your own normal <strong>.docx</strong> templates. The system will auto-detect your headings 
+        (like SUMMARY, EXPERIENCE) and inject generated content underneath them while preserving your design.
+      </p>
+      <p class="section-desc hidden" id="template-desc-placeholders">
         Upload your own <strong>.docx</strong> templates with placeholders like
         <code>{{FULL_NAME}}</code> and <code>{{COVER_LETTER_BODY}}</code>.
-        The AI fills your content into these templates while preserving your design.
       </p>
+
+      <div class="card" style="margin-bottom: 24px;">
+        <div class="field-group">
+          <label>Template Processing Mode</label>
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+            <label style="display: flex; gap: 8px; cursor: pointer; align-items: flex-start;">
+              <input type="radio" name="templateMode" value="smart" style="margin-top: 4px;" checked>
+              <div>
+                <strong>Smart Import (Default)</strong>
+                <div class="field-hint" style="margin-top: 2px;">No editing needed. Automatically maps generated text to your existing headings.</div>
+              </div>
+            </label>
+            <label style="display: flex; gap: 8px; cursor: pointer; align-items: flex-start;">
+              <input type="radio" name="templateMode" value="placeholders" style="margin-top: 4px;">
+              <div>
+                <strong>Placeholder Tags (Advanced)</strong>
+                <div class="field-hint" style="margin-top: 2px;">Classic mode. You must manually add `{{TAGS}}` throughout your Word document.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Source Resume -->
+      <div class="card template-card" style="border-top: 4px solid var(--accent); margin-bottom: 24px;">
+        <div class="template-header">
+          <div>
+            <strong>Source Resume (Your Factual Background)</strong>
+            <p class="field-hint">Upload your actual resume here. The AI reads this to know your real experience, skills, and education.</p>
+            <p class="field-hint" style="color: var(--accent); margin-top: 4px;">✨ <strong>New:</strong> Uploading will automatically try to auto-fill your Profile below!</p>
+          </div>
+          <span id="source-resume-badge" class="template-badge hidden">✅ Uploaded</span>
+        </div>
+        <div class="upload-area" id="upload-source-area">
+          <input type="file" id="inp-source-resume" accept=".docx" class="file-input" />
+          <label for="inp-source-resume" class="upload-label">
+            <span class="upload-icon">🎓</span>
+            <span id="source-upload-text">Click to upload your Source Resume (.docx)</span>
+          </label>
+        </div>
+        <div id="source-resume-active-bar" class="active-template-bar hidden"></div>
+      </div>
 
       <!-- Resume template -->
       <div class="card template-card">
         <div class="template-header">
           <div>
             <strong>Resume Template</strong>
-            <p class="field-hint">Should contain placeholders like <code>{{SUMMARY}}</code>, <code>{{EXPERIENCE_1_TITLE}}</code>, etc.</p>
+            <p class="field-hint" id="resume-hint-smart">Upload a typical resume DOCX with standard headings.</p>
+            <p class="field-hint hidden" id="resume-hint-placeholders">Should contain placeholders like <code>{{SUMMARY}}</code>, <code>{{EXPERIENCE_1_TITLE}}</code>, etc.</p>
           </div>
           <span id="resume-template-badge" class="template-badge hidden">✅ Uploaded</span>
         </div>
@@ -137,7 +187,9 @@
             <span id="resume-upload-text">Click to upload resume template (.docx)</span>
           </label>
         </div>
+        <div id="resume-active-bar" class="active-template-bar hidden"></div>
         <div id="resume-placeholders" class="placeholder-list hidden"></div>
+        <div id="resume-mapping-ui" class="mapping-ui hidden" style="margin-top: 16px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;"></div>
       </div>
 
       <!-- Cover letter template -->
@@ -145,7 +197,8 @@
         <div class="template-header">
           <div>
             <strong>Cover Letter Template</strong>
-            <p class="field-hint">Should contain <code>{{COVER_LETTER_BODY}}</code> at minimum.</p>
+            <p class="field-hint" id="cl-hint-smart">Upload a typical cover letter DOCX.</p>
+            <p class="field-hint hidden" id="cl-hint-placeholders">Should contain <code>{{COVER_LETTER_BODY}}</code> at minimum.</p>
           </div>
           <span id="cl-template-badge" class="template-badge hidden">✅ Uploaded</span>
         </div>
@@ -156,11 +209,13 @@
             <span id="cl-upload-text">Click to upload cover letter template (.docx)</span>
           </label>
         </div>
+        <div id="cl-active-bar" class="active-template-bar hidden"></div>
         <div id="cl-placeholders" class="placeholder-list hidden"></div>
+        <div id="cl-mapping-ui" class="mapping-ui hidden" style="margin-top: 16px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;"></div>
       </div>
 
       <!-- Placeholder reference -->
-      <div class="card placeholder-ref">
+      <div class="card placeholder-ref hidden" id="placeholder-ref-card">
         <h3 class="ref-title">📖 Placeholder Reference</h3>
         <div class="ref-grid">
           <div>
@@ -276,8 +331,6 @@
   <!-- Toast -->
   <div id="toast" class="toast hidden"></div>
 
-  <script src="../lib/pizzip.js"></script>
-  <script src="../lib/docxtemplater.js"></script>
   <script type="module" src="settings.js"></script>
 
 </body>

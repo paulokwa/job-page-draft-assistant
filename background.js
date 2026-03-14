@@ -10,6 +10,9 @@ const MENU_ITEMS = [
 // ── Setup ──────────────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(() => {
+  // Allow users to open the side panel by clicking on the action toolbar icon
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error) => console.error(error));
+
   // Create parent menu item
   chrome.contextMenus.create({
     id: 'jpda-parent',
@@ -29,45 +32,55 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // ── Context Menu Click ─────────────────────────────────────────────────────
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+chrome.contextMenus.onClicked.addListener((info, tab) => {
   const menuIds = MENU_ITEMS.map(m => m.id);
   if (!menuIds.includes(info.menuItemId)) return;
 
-  // Map menu id to mode
-  const modeMap = {
-    'create-resume':       'resume',
-    'create-cover-letter': 'cover-letter',
-    'create-both':         'both',
-  };
-  const mode = modeMap[info.menuItemId];
+  // 1. OPEN SIDE PANEL IMMEDIATELY (Must be synchronous for user gesture)
+  chrome.sidePanel.setOptions({ tabId: tab.id, path: 'dashboard/dashboard.html', enabled: true });
+  chrome.sidePanel.open({ tabId: tab.id }).catch(err => console.error('Failed to open side panel:', err));
 
-  // Store mode so dashboard can read it on open
-  await chrome.storage.session.set({ pendingMode: mode });
+  // 2. RUN ASYNC LOGIC IN BACKGROUND
+  (async () => {
+    // Map menu id to mode
+    const modeMap = {
+      'create-resume':       'resume',
+      'create-cover-letter': 'cover-letter',
+      'create-both':         'both',
+    };
+    const mode = modeMap[info.menuItemId];
 
-  // Ask content script to capture content
-  let response;
-  try {
-    response = await chrome.tabs.sendMessage(tab.id, { type: 'CAPTURE_CONTENT' });
-  } catch (e) {
-    // Content script may not be injected yet — inject and retry
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+    // Store mode so dashboard can read it on open
+    await chrome.storage.session.set({ pendingMode: mode });
+
+    // Ask content script to capture content
+    let response;
     try {
       response = await chrome.tabs.sendMessage(tab.id, { type: 'CAPTURE_CONTENT' });
-    } catch (err) {
-      response = { error: 'Could not read page content.' };
+    } catch (e) {
+      // Content script may not be injected yet — inject and retry
+      try {
+        await chrome.scripting.executeScript({ 
+          target: { tabId: tab.id, allFrames: true }, 
+          files: ['content.js'] 
+        });
+        response = await chrome.tabs.sendMessage(tab.id, { type: 'CAPTURE_CONTENT' });
+      } catch (err) {
+        console.error('Failed to capture content:', err);
+        response = { error: 'Could not read page content.', pageText: '' };
+      }
     }
-  }
 
-  // Store captured data in session storage for dashboard to read
-  await chrome.storage.session.set({
-    extractedData: response,
-    sourceUrl: tab.url,
-    sourceTitle: tab.title,
-  });
+    // Store captured data in session storage for dashboard to read
+    await chrome.storage.session.set({
+      extractedData: response,
+      sourceUrl: tab.url,
+      sourceTitle: tab.title,
+    });
 
-  // Open side panel
-  await chrome.sidePanel.open({ tabId: tab.id });
-  await chrome.sidePanel.setOptions({ tabId: tab.id, path: 'dashboard/dashboard.html', enabled: true });
+    // Tell any already open dashboard to reload session
+    chrome.runtime.sendMessage({ type: 'SESSION_UPDATED' }).catch(() => {});
+  })();
 });
 
 // ── Message Router ─────────────────────────────────────────────────────────

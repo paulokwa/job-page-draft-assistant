@@ -26,7 +26,7 @@ function getSkills(profile) {
 
 // ── Mock Resume ────────────────────────────────────────────────────────────
 
-export async function generateMockResume(jobData, profile) {
+export async function generateMockResume(jobData, profile, sourceResumeText) {
   await delay(700);
 
   const name     = getName(profile);
@@ -69,12 +69,13 @@ ${expBlock}
 EDUCATION
 ${eduLine}
 
-[MOCK MODE — This is a simulated draft. Switch to a real AI provider to generate a fully tailored resume.]`;
+[MOCK MODE — This is a simulated draft. Switch to a real AI provider to generate a fully tailored resume.]
+${sourceResumeText ? '[✅ Source Resume detected and used as primary factual basis.]' : ''}`;
 }
 
 // ── Mock Cover Letter ──────────────────────────────────────────────────────
 
-export async function generateMockCoverLetter(jobData, profile) {
+export async function generateMockCoverLetter(jobData, profile, sourceResumeText) {
   await delay(600);
 
   const name    = getName(profile);
@@ -97,7 +98,8 @@ Thank you for considering my application. I look forward to the opportunity to d
 Sincerely,
 ${name}
 
-[MOCK MODE — This is a simulated draft. Switch to a real AI provider to generate a fully tailored cover letter.]`;
+[MOCK MODE — This is a simulated draft. Switch to a real AI provider to generate a fully tailored cover letter.]
+${sourceResumeText ? '[✅ Source Resume detected and used as primary factual basis.]' : ''}`;
 }
 
 // ── Mock Revision ──────────────────────────────────────────────────────────

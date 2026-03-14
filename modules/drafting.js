@@ -20,13 +20,28 @@ Do NOT invent, assume, or embellish:
 - measurable achievements or statistics not supplied
 - job titles or responsibilities not described
 
-If information needed for a section is missing from the profile, omit that section or write a generic placeholder note rather than fabricating content. Accuracy and honesty are non-negotiable.`;
+If information needed for a section is missing from the profile or source resume, omit that section or write a generic placeholder note rather than fabricating content. Accuracy and honesty are non-negotiable.`;
+
+function buildSourceTruthBlock(profileText, sourceResumeText) {
+  const blocks = [];
+  if (sourceResumeText) {
+    blocks.push('=== USER SOURCE RESUME (GROUND TRUTH) ===');
+    blocks.push(sourceResumeText);
+    blocks.push('=== END SOURCE RESUME ===');
+    blocks.push('');
+  }
+  blocks.push('=== USER PROFILE DATA ===');
+  blocks.push(profileText);
+  blocks.push('=== END USER PROFILE ===');
+  return blocks.join('\\n');
+}
 
 // ── Resume Generation ─────────────────────────────────────────────────────
 
-export async function generateResume(jobData, profile, settings) {
-  if (isMock(settings)) return generateMockResume(jobData, profile);
+export async function generateResume(jobData, profile, settings, sourceResumeText = '') {
+  if (isMock(settings)) return generateMockResume(jobData, profile, sourceResumeText);
   const profileText = profileToPromptText(profile);
+  const truthBlock = buildSourceTruthBlock(profileText, sourceResumeText);
 
   const systemPrompt = [
     'You are an expert resume writer helping a job seeker tailor their resume to a specific job posting.',
@@ -46,9 +61,9 @@ export async function generateResume(jobData, profile, settings) {
     jobData.description,
     '=== END JOB DESCRIPTION ===',
     '',
-    profileText,
+    truthBlock,
     '',
-    'TASK: Write a tailored resume for this job based solely on the user profile above.',
+    'TASK: Write a tailored resume for this job based solely on the source resume & user profile above.',
     'Structure it with these sections (omit any section for which no profile data exists):',
     '1. Contact Information',
     '2. Professional Summary (tailored to THIS specific job)',
@@ -65,9 +80,10 @@ export async function generateResume(jobData, profile, settings) {
 
 // ── Cover Letter Generation ───────────────────────────────────────────────
 
-export async function generateCoverLetter(jobData, profile, settings) {
-  if (isMock(settings)) return generateMockCoverLetter(jobData, profile);
+export async function generateCoverLetter(jobData, profile, settings, sourceResumeText = '') {
+  if (isMock(settings)) return generateMockCoverLetter(jobData, profile, sourceResumeText);
   const profileText = profileToPromptText(profile);
+  const truthBlock = buildSourceTruthBlock(profileText, sourceResumeText);
   const today = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
 
   const systemPrompt = [
@@ -88,9 +104,9 @@ export async function generateCoverLetter(jobData, profile, settings) {
     jobData.description,
     '=== END JOB DESCRIPTION ===',
     '',
-    profileText,
+    truthBlock,
     '',
-    'TASK: Write a tailored cover letter for this specific job using the user profile above.',
+    'TASK: Write a tailored cover letter for this specific job using the source resume / user profile above.',
     'Structure:',
     '- Date line',
     '- Greeting (use "Dear Hiring Manager," if no specific contact is known)',

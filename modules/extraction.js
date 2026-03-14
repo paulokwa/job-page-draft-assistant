@@ -8,6 +8,7 @@
  * @returns {{ jobTitle, company, location, sourceUrl, description, usedSelection }}
  */
 export function extractJobFields(rawText, url) {
+  if (!rawText) return { jobTitle: '', company: '', location: '', sourceUrl: url || '', description: '' };
   const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
 
   let jobTitle = '';
@@ -150,4 +151,76 @@ export function detectSpecialInstructions(text) {
   }
 
   return instructions;
+}
+
+/**
+ * Uses the configured AI provider to extract user profile data from the raw text of a resume.
+ * @param {string} resumeText - The raw text of the uploaded resume
+ * @param {object} settings - The provider settings ({ provider, apiKey, modelName, endpoint })
+ * @returns {Promise<object>} - Parsed profile matching DEFAULT_PROFILE structure
+ */
+export async function extractProfileFromResume(resumeText, settings) {
+  if (!settings || !settings.provider) {
+    throw new Error('AI provider is not configured. Please configure it in settings.');
+  }
+
+  // We only run this dynamically, so let's import callAI here to avoid circular dep issues just in case,
+  // or just rely on the fact that provider.js is already imported in settings where this is called.
+  // Actually, we should just import it at the top level of this file.
+  
+  const systemPrompt = `You are a resume parsing assistant. 
+Your goal is to extract information from the user's resume and output it STRICTLY as a JSON object matching the exact schema below.
+If a piece of information is missing, leave the string empty or the array empty.
+Do NOT include any markdown formatting, backticks, or explanation in your output. Just the raw JSON object.
+
+Schema:
+{
+  "personal": {
+    "fullName": "Name",
+    "email": "Email address",
+    "phone": "Phone number",
+    "address": "Location/Address",
+    "linkedin": "LinkedIn URL",
+    "portfolio": "Portfolio/Website URL"
+  },
+  "summaries": [
+    { "label": "General Profile", "text": "A professional summary or objective extracted from the resume" }
+  ],
+  "skills": ["Skill 1", "Skill 2"],
+  "experience": [
+    { 
+      "title": "Job Title", 
+      "company": "Company Name", 
+      "dates": "Start - End Date", 
+      "location": "Job Location", 
+      "bullets": "• Bullet 1\\n• Bullet 2", 
+      "tags": [] 
+    }
+  ],
+  "education": [
+    { "degree": "Degree/Diploma", "school": "School Name", "year": "Graduation Year", "notes": "Any honors or notes" }
+  ],
+  "certifications": [
+    { "name": "Cert Name", "issuer": "Issuing Org", "year": "Year", "doNotClaim": false }
+  ]
+}`;
+
+  const userPrompt = `Here is the user's resume text:\n\n${resumeText}\n\nParse this into the requested JSON schema now.`;
+
+  // We are importing callAI dynamically to avoid circular dependencies
+  const { callAI } = await import('./provider.js');
+
+  const responseText = await callAI(systemPrompt, userPrompt, settings);
+  
+  try {
+    // Strip markdown blocks if the AI accidentally adds them
+    let cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    // Sometimes it might start or end with a tick
+    cleanJson = cleanJson.replace(/^`/, '').replace(/`$/, '');
+    
+    return JSON.parse(cleanJson);
+  } catch (e) {
+    console.error('Failed to parse AI resume extraction JSON:', e, responseText);
+    throw new Error('AI returned invalid profile data layout.');
+  }
 }

@@ -3,10 +3,26 @@
 import { loadProfile, saveProfile, DEFAULT_PROFILE } from '../modules/profile.js';
 import { callAI } from '../modules/provider.js';
 import { validateTemplate, fileToArrayBuffer } from '../modules/template.js';
+import { analyzeTemplate, extractTextFromDocx } from '../modules/templateInterpreter.js';
 
 // ── State ─────────────────────────────────────────────────────────────────
 let profile = null;
 let settings = {};
+let docSettings = {};
+
+const PROVIDER_MODELS = {
+  mock: ['mock-basic'],
+  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'],
+  ollama: ['llama3', 'mistral', 'gemma', 'phi3']
+};
+
+const DEFAULT_MODELS = {
+  mock: 'mock-basic',
+  openai: 'gpt-4o-mini',
+  gemini: 'gemini-2.5-flash',
+  ollama: 'llama3'
+};
 
 // ── DOM helpers ───────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -16,7 +32,8 @@ async function init() {
   // Load saved data
   const stored = await chrome.storage.sync.get(['providerSettings', 'docSettings']);
   settings = stored.providerSettings || {};
-  const docSettings = stored.docSettings || {};
+  docSettings = stored.docSettings || { templateMode: 'smart' };
+  if (!docSettings.templateMode) docSettings.templateMode = 'smart';
   profile = await loadProfile();
 
   // Populate fields
@@ -41,18 +58,36 @@ async function init() {
   $('btn-save-profile').addEventListener('click', saveProfileData);
 
   // Provider field interactions
-  $('sel-provider').addEventListener('change', updateProviderVisibility);
+  $('sel-provider').addEventListener('change', () => updateProviderVisibility(true));
+  $('sel-model').addEventListener('change', () => {
+    if ($('sel-model').value === 'custom') {
+      $('inp-custom-model').classList.remove('hidden');
+      $('inp-custom-model').focus();
+    } else {
+      $('inp-custom-model').classList.add('hidden');
+    }
+  });
   $('inp-filename-pattern').addEventListener('input', updateFilenamePreview);
   $('btn-test-provider').addEventListener('click', testConnection);
 
   // Template uploads
   $('inp-resume-template').addEventListener('change', e => handleTemplateUpload(e, 'resume'));
   $('inp-cl-template').addEventListener('change', e => handleTemplateUpload(e, 'cover-letter'));
+  $('inp-source-resume').addEventListener('change', handleSourceResumeUpload);
 
   // Profile dynamic list buttons
   $('btn-add-exp').addEventListener('click',  () => addExperienceEntry());
   $('btn-add-edu').addEventListener('click',  () => addEducationEntry());
   $('btn-add-cert').addEventListener('click', () => addCertEntry());
+
+  // Template Mode Toggle
+  document.querySelectorAll('input[name="templateMode"]').forEach(r => {
+    r.addEventListener('change', async () => {
+      updateTemplateModeVis();
+      docSettings.templateMode = document.querySelector('input[name="templateMode"]:checked').value;
+      await saveDocuments(); // Auto save mode
+    });
+  });
 
   updateFilenamePreview();
 }
@@ -61,31 +96,79 @@ async function init() {
 function populateProviderSection(s) {
   if (s.provider)  $('sel-provider').value  = s.provider;
   if (s.apiKey)    $('inp-apikey').value     = s.apiKey;
-  if (s.modelName) $('inp-model').value      = s.modelName;
   if (s.endpoint)  $('inp-endpoint').value   = s.endpoint;
-  updateProviderVisibility();
+  updateProviderVisibility(false);
 }
 
-function updateProviderVisibility() {
+function updateProviderVisibility(providerChanged = false) {
   const p = $('sel-provider').value;
   const isMock = p === 'mock';
   $('group-apikey').classList.toggle('hidden',   isMock || p === 'ollama' || !p);
   $('group-endpoint').classList.toggle('hidden', p !== 'ollama');
-  // Hide model field and test area for mock
   $('provider-test-area').style.display = isMock ? 'none' : '';
-  const modelGroup = $('inp-model').closest('.field-group');
-  if (modelGroup) modelGroup.style.display = isMock ? 'none' : '';
+  
+  const modelGroup = $('group-model');
+  if (modelGroup) modelGroup.style.display = !p ? 'none' : '';
+  
+  updateModelDropdown(p, providerChanged);
+}
+
+function updateModelDropdown(provider, providerChanged) {
+  if (!provider) return;
+  const selModel = $('sel-model');
+  const inpCustom = $('inp-custom-model');
+  
+  const currentVal = providerChanged ? DEFAULT_MODELS[provider] : (selModel.value === 'custom' ? inpCustom.value : (settings.modelName || DEFAULT_MODELS[provider]));
+  
+  selModel.innerHTML = '';
+  const models = PROVIDER_MODELS[provider] || [];
+  
+  let found = false;
+  models.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    if (m === currentVal) {
+      opt.selected = true;
+      found = true;
+    }
+    selModel.appendChild(opt);
+  });
+  
+  const customOpt = document.createElement('option');
+  customOpt.value = 'custom';
+  customOpt.textContent = 'Custom...';
+  if (!found && currentVal) {
+    customOpt.selected = true;
+    inpCustom.value = currentVal;
+    inpCustom.classList.remove('hidden');
+  } else {
+    inpCustom.classList.add('hidden');
+  }
+  selModel.appendChild(customOpt);
 }
 
 async function saveProvider() {
+  const provider = $('sel-provider').value;
+  const apiKey = $('inp-apikey').value.trim();
+  
+  if ((provider === 'openai' || provider === 'gemini') && !apiKey) {
+    $('apikey-warning').classList.remove('hidden');
+  } else {
+    $('apikey-warning').classList.add('hidden');
+  }
+
+  const modelVal = $('sel-model').value;
+  const finalModel = modelVal === 'custom' ? $('inp-custom-model').value.trim() : modelVal;
+
   settings = {
-    provider:  $('sel-provider').value,
-    apiKey:    $('inp-apikey').value.trim(),
-    modelName: $('inp-model').value.trim(),
+    provider,
+    apiKey,
+    modelName: finalModel,
     endpoint:  $('inp-endpoint').value.trim(),
-    // carry over template data
-    resumeTemplate:      settings.resumeTemplate      || null,
-    coverLetterTemplate: settings.coverLetterTemplate || null,
+    // carry over template names
+    resumeTemplateName:      settings.resumeTemplateName      || null,
+    coverLetterTemplateName: settings.coverLetterTemplateName || null,
   };
   await chrome.storage.sync.set({ providerSettings: settings });
   showToast('✅ AI settings saved');
@@ -105,10 +188,22 @@ async function testConnection() {
   result.textContent = '⏳ Testing…';
   result.className = 'test-result';
 
+  const provider = $('sel-provider').value;
+  const apiKey = $('inp-apikey').value.trim();
+
+  if ((provider === 'openai' || provider === 'gemini') && !apiKey) {
+    $('apikey-warning').classList.remove('hidden');
+  } else {
+    $('apikey-warning').classList.add('hidden');
+  }
+
+  const modelVal = $('sel-model').value;
+  const finalModel = modelVal === 'custom' ? $('inp-custom-model').value.trim() : modelVal;
+
   const testSettings = {
-    provider:  p,
-    apiKey:    $('inp-apikey').value.trim(),
-    modelName: $('inp-model').value.trim(),
+    provider,
+    apiKey,
+    modelName: finalModel,
     endpoint:  $('inp-endpoint').value.trim(),
   };
 
@@ -134,7 +229,30 @@ async function testConnection() {
 function populateDocSection(d) {
   if (d.defaultType)       $('sel-default-type').value     = d.defaultType;
   if (d.filenamePattern)   $('inp-filename-pattern').value = d.filenamePattern;
+
+  const rMode = document.querySelector(`input[name="templateMode"][value="${d.templateMode || 'smart'}"]`);
+  if (rMode) rMode.checked = true;
+  updateTemplateModeVis();
+
   updateFilenamePreview();
+}
+
+function updateTemplateModeVis() {
+  const mode = document.querySelector('input[name="templateMode"]:checked').value;
+  const isSmart = mode === 'smart';
+  
+  $('template-desc-smart').classList.toggle('hidden', !isSmart);
+  $('template-desc-placeholders').classList.toggle('hidden', isSmart);
+  $('resume-hint-smart').classList.toggle('hidden', !isSmart);
+  $('resume-hint-placeholders').classList.toggle('hidden', isSmart);
+  $('cl-hint-smart').classList.toggle('hidden', !isSmart);
+  $('cl-hint-placeholders').classList.toggle('hidden', isSmart);
+  if ($('placeholder-ref-card')) $('placeholder-ref-card').classList.toggle('hidden', isSmart);
+
+  $('resume-placeholders').classList.add('hidden');
+  $('resume-mapping-ui').classList.add('hidden');
+  $('cl-placeholders').classList.add('hidden');
+  $('cl-mapping-ui').classList.add('hidden');
 }
 
 function updateFilenamePreview() {
@@ -151,10 +269,10 @@ function updateFilenamePreview() {
 }
 
 async function saveDocuments() {
-  const docSettings = {
-    defaultType:     $('sel-default-type').value,
-    filenamePattern: $('inp-filename-pattern').value.trim(),
-  };
+  docSettings.defaultType = $('sel-default-type').value;
+  docSettings.filenamePattern = $('inp-filename-pattern').value.trim();
+  docSettings.templateMode = document.querySelector('input[name="templateMode"]:checked').value;
+  
   // Also update filenamePattern in providerSettings for dashboard access
   settings.filenamePattern = docSettings.filenamePattern;
   await chrome.storage.sync.set({ docSettings, providerSettings: settings });
@@ -164,14 +282,41 @@ async function saveDocuments() {
 
 // ── Templates ─────────────────────────────────────────────────────────────
 async function populateTemplateStatus() {
-  if (settings.resumeTemplate) {
+  // Check local storage for the actual templates to confirm they exist
+  const localData = await chrome.storage.local.get(['resumeTemplate', 'coverLetterTemplate', 'sourceResumeName']);
+
+  if (localData.sourceResumeName) {
+    $('source-resume-badge').classList.remove('hidden');
+    $('source-upload-text').textContent = `${localData.sourceResumeName} uploaded ✓ (click to replace)`;
+    $('source-resume-active-bar').textContent = `📄 Active Source: ${localData.sourceResumeName}`;
+    $('source-resume-active-bar').classList.remove('hidden');
+  }
+
+  if (localData.resumeTemplate) {
     $('resume-template-badge').classList.remove('hidden');
-    $('resume-upload-text').textContent = 'Resume template uploaded ✓ (click to replace)';
+    const name = settings.resumeTemplateName || 'resume template';
+    $('resume-upload-text').textContent = `${name} uploaded ✓ (click to replace)`;
+    updateTemplateStatusBar('resume', name);
   }
-  if (settings.coverLetterTemplate) {
+  if (localData.coverLetterTemplate) {
     $('cl-template-badge').classList.remove('hidden');
-    $('cl-upload-text').textContent = 'Cover letter template uploaded ✓ (click to replace)';
+    const name = settings.coverLetterTemplateName || 'cover letter template';
+    $('cl-upload-text').textContent = `${name} uploaded ✓ (click to replace)`;
+    updateTemplateStatusBar('cover-letter', name);
   }
+}
+
+/**
+ * Shows or updates the persistent active-template strip below the upload area.
+ * @param {'resume'|'cover-letter'} docType
+ * @param {string} filename
+ */
+function updateTemplateStatusBar(docType, filename) {
+  const barId = docType === 'resume' ? 'resume-active-bar' : 'cl-active-bar';
+  const bar = $(barId);
+  if (!bar) return;
+  bar.textContent = `📄 Active template: ${filename}`;
+  bar.classList.remove('hidden');
 }
 
 async function handleTemplateUpload(event, docType) {
@@ -182,40 +327,194 @@ async function handleTemplateUpload(event, docType) {
   const badgeId  = isResume ? 'resume-template-badge' : 'cl-template-badge';
   const textId   = isResume ? 'resume-upload-text'    : 'cl-upload-text';
   const phListId = isResume ? 'resume-placeholders'   : 'cl-placeholders';
+  const mappingUiId = isResume ? 'resume-mapping-ui'  : 'cl-mapping-ui';
+  const mode = docSettings.templateMode || 'smart';
 
   try {
     const ab = await fileToArrayBuffer(file);
-    const { placeholders, warnings } = await validateTemplate(ab);
-
-    // Store as base64 in settings
     const b64 = arrayBufferToBase64(ab);
+    const localPayload = {};
     if (isResume) {
-      settings.resumeTemplate = b64;
+      localPayload.resumeTemplate = b64;
+      settings.resumeTemplateName = file.name;
     } else {
-      settings.coverLetterTemplate = b64;
-    }
-    await chrome.storage.sync.set({ providerSettings: settings });
-
-    // Update UI
-    $(badgeId).classList.remove('hidden');
-    $(textId).textContent = `${file.name} uploaded ✓ (click to replace)`;
-
-    // Show placeholders
-    const phList = $(phListId);
-    phList.classList.remove('hidden');
-    phList.innerHTML = `
-      <strong>Detected placeholders (${placeholders.length}):</strong>
-      <div class="found">${placeholders.map(p => `<span class="ph-tag">${p}</span>`).join('')}</div>
-      ${warnings.map(w => `<div class="placeholder-warning">⚠️ ${w}</div>`).join('')}
-    `;
-    if (!placeholders.length) {
-      phList.innerHTML = '<div class="placeholder-warning">⚠️ No <code>{{PLACEHOLDER}}</code> tags found. Make sure your template uses double curly brace placeholders.</div>';
+      localPayload.coverLetterTemplate = b64;
+      settings.coverLetterTemplateName = file.name;
     }
 
-    showToast(`✅ Template uploaded: ${placeholders.length} placeholder(s) detected`);
+    if (mode === 'smart') {
+      const { headings, foundFormat } = await analyzeTemplate(ab);
+      await chrome.storage.local.set(localPayload);
+      await chrome.storage.sync.set({ providerSettings: settings });
+      
+      $(badgeId).classList.remove('hidden');
+      $(textId).textContent = `${file.name} uploaded ✓ (click to replace)`;
+      updateTemplateStatusBar(docType, file.name);
+
+      renderMappingUi(docType, headings, mappingUiId);
+      showToast(`✅ Template uploaded: ${headings.length} section(s) detected`);
+
+      if (foundFormat === 'placeholders') {
+        setTimeout(() => showToast('Info: Detected tags {{}}, but using Smart Headings.'), 3500);
+      }
+    } else {
+      const { placeholders, warnings } = await validateTemplate(ab);
+      await chrome.storage.local.set(localPayload);
+      await chrome.storage.sync.set({ providerSettings: settings });
+
+      $(badgeId).classList.remove('hidden');
+      $(textId).textContent = `${file.name} uploaded ✓ (click to replace)`;
+      updateTemplateStatusBar(docType, file.name);
+
+      const phList = $(phListId);
+      phList.classList.remove('hidden');
+      phList.innerHTML = `
+        <strong>Detected placeholders (${placeholders.length}):</strong>
+        <div class="found">${placeholders.map(p => `<span class="ph-tag">${p}</span>`).join('')}</div>
+        ${warnings.map(w => `<div class="placeholder-warning">⚠️ ${w}</div>`).join('')}
+      `;
+      if (!placeholders.length) {
+        phList.innerHTML = '<div class="placeholder-warning">⚠️ No <code>{{PLACEHOLDER}}</code> tags found. Make sure your template uses double curly brace placeholders.</div>';
+      }
+
+      showToast(`✅ Template uploaded: ${placeholders.length} placeholder(s) detected`);
+    }
+
   } catch (e) {
     showToast(`❌ Template error: ${e.message}`);
   }
+}
+
+async function handleSourceResumeUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const ab = await fileToArrayBuffer(file);
+    const b64 = arrayBufferToBase64(ab);
+    const plainText = await extractTextFromDocx(ab);
+
+    // Save full docx back as sourceResumeTemplate for layout fallback
+    // Save plain text for AI
+    await chrome.storage.local.set({
+      sourceResumeTemplate: b64,
+      sourceResumeText: plainText,
+      sourceResumeName: file.name
+    });
+
+    $('source-resume-badge').classList.remove('hidden');
+    $('source-upload-text').textContent = `${file.name} uploaded ✓ (click to replace)`;
+    $('source-resume-active-bar').textContent = `📄 Active Source: ${file.name}`;
+    $('source-resume-active-bar').classList.remove('hidden');
+
+    showToast(`✅ Source Resume uploaded and text extracted.`);
+    
+    // Auto-fill profile if AI is configured
+    if (settings.provider && settings.provider !== 'mock') {
+      try {
+        const { extractProfileFromResume } = await import('../modules/extraction.js');
+        showToast(`🤖 AI is analyzing your resume to auto-fill your profile... (This may take a few seconds)`);
+        
+        const extractedData = await extractProfileFromResume(plainText, settings);
+        
+        // Merge extracted data into current profile
+        profile = {
+          ...profile,
+          personal: { ...(profile.personal || {}), ...(extractedData.personal || {}) },
+          skills: extractedData.skills || profile.skills || [],
+          // Replace lists to avoid duplication problems if re-uploaded, but user can always edit
+          summaries: extractedData.summaries?.length ? extractedData.summaries : profile.summaries,
+          experience: extractedData.experience?.length ? extractedData.experience : profile.experience,
+          education: extractedData.education?.length ? extractedData.education : profile.education,
+          certifications: extractedData.certifications?.length ? extractedData.certifications : profile.certifications,
+        };
+        
+        populateProfile(profile);
+        
+        // Let the user know they need to save
+        setTimeout(() => showToast(`✨ Profile fields auto-filled! Please review and click "Save Profile" at the bottom.`), 3500);
+      } catch (aiError) {
+        console.error("AI Profile Extraction failed:", aiError);
+        setTimeout(() => showToast(`⚠️ Resume uploaded, but AI profile extraction failed: ${aiError.message}`), 3500);
+      }
+    }
+
+  } catch (e) {
+    showToast(`❌ Source Resume error: ${e.message}`);
+  }
+}
+
+function renderMappingUi(docType, headings, containerId) {
+  const container = $(containerId);
+  container.classList.remove('hidden');
+  container.innerHTML = `
+    <strong style="margin-bottom:8px; display:block;">Map Headers to Content Sections:</strong>
+    <p class="field-hint" style="margin-bottom:12px;">We detected these headings. Tell us what section they represent.</p>
+  `;
+
+  const options = docType === 'resume' 
+    ? ['IGNORE', 'SUMMARY', 'EXPERIENCE', 'EDUCATION', 'SKILLS', 'CERTIFICATIONS', 'CONTACT']
+    : ['IGNORE', 'COVER_LETTER_BODY', 'DATE', 'CONTACT'];
+
+  docSettings.templateMapping = docSettings.templateMapping || {};
+  const docMappingMap = docSettings.templateMapping[docType] || {};
+
+  headings.forEach(h => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid var(--border-light);';
+    
+    let bestMatch = 'IGNORE';
+    if (docMappingMap[h]) {
+      bestMatch = docMappingMap[h];
+    } else {
+      const H = h.toUpperCase();
+      options.forEach(opt => {
+         if (opt !== 'IGNORE' && H.includes(opt.replace('_', ' '))) {
+           bestMatch = opt;
+         }
+      });
+      if (H.includes('PROFILE') || H.includes('ABOUT')) bestMatch = 'SUMMARY';
+      if (H.includes('EMPLOYMENT') || H.includes('WORK') || H.includes('HISTORY')) bestMatch = 'EXPERIENCE';
+    }
+
+    const select = document.createElement('select');
+    select.className = 'mapping-select';
+    select.dataset.heading = h;
+    select.dataset.docType = docType;
+    // Basic styling for the select inline to avoid messing with CSS too much
+    select.style.padding = '4px';
+    select.style.borderRadius = '4px';
+
+    options.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt;
+      option.textContent = opt === 'IGNORE' ? '— Ignore —' : opt.replace(/_/g, ' ');
+      if (opt === bestMatch) option.selected = true;
+      select.appendChild(option);
+    });
+
+    select.addEventListener('change', () => {
+      saveMapping(docType, h, select.value);
+    });
+    // save initially guessed
+    saveMapping(docType, h, bestMatch, false);
+
+    row.innerHTML = `<span style="font-family:var(--font-mono); font-size:13px; color:var(--text); background:var(--bg-hover); padding:2px 6px; border-radius:4px;">${escHtml(h)}</span>`;
+    row.appendChild(select);
+    container.appendChild(row);
+  });
+
+  if (headings.length === 0) {
+    container.innerHTML += `<div class="placeholder-warning">⚠️ No standard headings detected. Please ensure your document has short section headers.</div>`;
+  }
+}
+
+async function saveMapping(docType, heading, role, showNotification = true) {
+  docSettings.templateMapping = docSettings.templateMapping || {};
+  docSettings.templateMapping[docType] = docSettings.templateMapping[docType] || {};
+  docSettings.templateMapping[docType][heading] = role;
+  await chrome.storage.sync.set({ docSettings });
+  if (showNotification) showToast('✅ Mapping saved');
 }
 
 function arrayBufferToBase64(buffer) {

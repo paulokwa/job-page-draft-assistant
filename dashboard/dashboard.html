@@ -185,11 +185,7 @@
   ═══════════════════════════════════════════════════ -->
   <div id="toast" class="toast hidden"></div>
 
-  <!-- ═══════════════════════════════════════════════════
-       SCRIPTS — lib globals loaded first
-  ═══════════════════════════════════════════════════ -->
-  <script src="../lib/pizzip.js"></script>
-  <script src="../lib/docxtemplater.js"></script>
+  <!-- SCRIPTS — lib globals are loaded lazily by dashboard.js when needed -->
   <script type="module" src="dashboard.js"></script>
 
 </body>
