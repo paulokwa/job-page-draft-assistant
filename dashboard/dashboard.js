@@ -64,8 +64,12 @@ const dom = {
   confirmNotice:      $('confirm-notice'),
   filenamePreview:    $('filename-preview'),
   toast:              $('toast'),
+  toast:              $('toast'),
   btnSettings:        $('btn-settings'),
   mockBanner:         $('mock-mode-banner'),
+  settingsView:       $('settings-view'),
+  btnCloseSettings:   $('btn-close-settings'),
+  settingsFrame:      $('settings-frame'),
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -176,9 +180,18 @@ function bindEvents() {
     }
   });
 
-  // Settings button
+  // Settings buttons
   dom.btnSettings.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ type: 'OPEN_SETTINGS' });
+    dom.settingsView.classList.add('visible');
+  });
+
+  dom.btnCloseSettings.addEventListener('click', async () => {
+    dom.settingsView.classList.remove('visible');
+    // Reload local state in case settings were changed in the overlay
+    state.settings = await loadSettings();
+    state.profile  = await loadProfile();
+    const isMock = state.settings?.provider === 'mock';
+    dom.mockBanner.classList.toggle('hidden', !isMock);
   });
 
   // Tab switching

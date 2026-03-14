@@ -29,6 +29,13 @@ const $ = id => document.getElementById(id);
 
 // ── Init ──────────────────────────────────────────────────────────────────
 async function init() {
+  // Check for embedded mode
+  const urlParams = new URLSearchParams(window.location.search);
+  const isEmbedded = urlParams.get('embed') === 'true';
+  if (isEmbedded) {
+    document.body.classList.add('embedded');
+  }
+
   // Load saved data
   const stored = await chrome.storage.sync.get(['providerSettings', 'docSettings']);
   settings = stored.providerSettings || {};

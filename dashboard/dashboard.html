@@ -20,9 +20,24 @@
       </div>
     </div>
     <div class="header-right">
-      <button id="btn-settings" class="icon-btn" title="Settings">⚙</button>
+      <button id="btn-settings" class="icon-btn" title="Open Settings">⚙</button>
     </div>
   </header>
+
+  <!-- ═══════════════════════════════════════════════════
+       SETTINGS OVERLAY (Slides from right)
+  ═══════════════════════════════════════════════════ -->
+  <div id="settings-view" class="settings-overlay">
+    <div class="overlay-header">
+      <button id="btn-close-settings" class="back-btn" title="Back to Dashboard">
+        <span class="arrow">←</span> Dashboard
+      </button>
+      <span class="overlay-title">Settings</span>
+    </div>
+    <div class="overlay-content">
+      <iframe id="settings-frame" src="../settings/settings.html?embed=true" frameborder="0"></iframe>
+    </div>
+  </div>
 
   <!-- Mock Mode Banner -->
   <div id="mock-mode-banner" class="mock-mode-banner hidden">

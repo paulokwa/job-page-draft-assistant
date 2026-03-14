@@ -35,6 +35,48 @@ html, body {
   line-height: 1.6;
 }
 
+/* ── Embedded Mode Refinements ──────────────── */
+/* When ?embed=true is used in the URL, hide the header and sidebar */
+body.embedded .settings-header {
+  display: none !important;
+}
+
+body.embedded .settings-nav {
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: auto;
+  flex-direction: row;
+  overflow-x: auto;
+  padding: 8px;
+  background: var(--bg-surface);
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+  gap: 8px;
+}
+
+body.embedded .nav-btn {
+  padding: 6px 12px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Hide icons in embedded mode to save space if needed, 
+   but since they are emoji/text in the HTML, we can just let them be or use CSS to hide parts */
+/* For now, just keep them as they are but horizontal */
+
+body.embedded .settings-main {
+  grid-template-columns: 1fr;
+  min-height: 100vh;
+}
+
+body.embedded .settings-section {
+  padding: 16px;
+}
+
 /* ── Scrollbar ─────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
