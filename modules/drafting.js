@@ -36,9 +36,13 @@ function buildSourceTruthBlock(profileText, sourceResumeText) {
   return blocks.join('\\n');
 }
 
+const JSON_OUTPUT_INSTRUCTION = `OUTPUT FORMAT:
+Your final response must be valid JSON ONLY. No markdown code blocks, no preamble, no trailing text.
+Follow this schema exactly:`;
+
 // ── Resume Generation ─────────────────────────────────────────────────────
 
-export async function generateResume(jobData, profile, settings, sourceResumeText = '') {
+export async function generateResume(jobData, profile, settings, sourceResumeText = '', templateMap = null) {
   if (isMock(settings)) return generateMockResume(jobData, profile, sourceResumeText);
   const profileText = profileToPromptText(profile);
   const truthBlock = buildSourceTruthBlock(profileText, sourceResumeText);
@@ -46,33 +50,45 @@ export async function generateResume(jobData, profile, settings, sourceResumeTex
   const systemPrompt = [
     'You are an expert resume writer helping a job seeker tailor their resume to a specific job posting.',
     HALLUCINATION_GUARD,
-    'Format the resume in clear plain text sections with proper headings.',
-    'The output will be placed into a Word document template — do not add styling or markdown.',
-    'Write compelling, truthful, and specific bullet points using the job posting as guidance.',
+    'You must return a structured JSON object containing only the tailored content for the resume sections.',
+    'Do not include formatting or markdown. The output will be injected into a Word document template.',
+    'Constrain length to fit a standard resume layout. Each bullet point should be concise and impact-oriented.',
   ].join('\n\n');
+
+  const resumeSchema = {
+    summary: "A 3-4 sentence professional summary tailored to the job.",
+    skills: ["Skill 1", "Skill 2", "..."],
+    workExperience: [
+      {
+        title: "Tailored Job Title",
+        company: "Company Name",
+        dates: "Date Range",
+        bullets: ["Bullet 1", "Bullet 2", "..."]
+      }
+    ],
+    education: [
+      {
+        degree: "Degree Name",
+        school: "School Name",
+        year: "Year"
+      }
+    ],
+    certifications: ["Cert 1", "Cert 2", "..."]
+  };
 
   const userPrompt = [
     `JOB TITLE: ${jobData.jobTitle}`,
     `EMPLOYER: ${jobData.company}`,
-    `LOCATION: ${jobData.location}`,
-    `SOURCE URL: ${jobData.sourceUrl}`,
-    '',
-    '=== JOB DESCRIPTION ===',
-    jobData.description,
-    '=== END JOB DESCRIPTION ===',
+    `=== JOB DESCRIPTION ===\n${jobData.description}\n=== END JOB DESCRIPTION ===`,
     '',
     truthBlock,
     '',
-    'TASK: Write a tailored resume for this job based solely on the source resume & user profile above.',
-    'Structure it with these sections (omit any section for which no profile data exists):',
-    '1. Contact Information',
-    '2. Professional Summary (tailored to THIS specific job)',
-    '3. Core Competencies / Skills (relevant to this posting)',
-    '4. Work Experience (most relevant roles first, bullet points tailored to this job)',
-    '5. Education',
-    '6. Certifications (only if listed in profile and not marked do-not-claim)',
+    'TASK: Write tailored resume content for this job based solely on the source resume & user profile.',
     '',
-    'Output ONLY the resume content — no preamble, no commentary, no markdown formatting.',
+    JSON_OUTPUT_INSTRUCTION,
+    JSON.stringify(resumeSchema, null, 2),
+    '',
+    templateMap ? `TEMPLATE CONSTRAINTS:\n${JSON.stringify(templateMap, null, 2)}` : '',
   ].join('\n');
 
   return callAI(systemPrompt, userPrompt, settings);
@@ -84,39 +100,37 @@ export async function generateCoverLetter(jobData, profile, settings, sourceResu
   if (isMock(settings)) return generateMockCoverLetter(jobData, profile, sourceResumeText);
   const profileText = profileToPromptText(profile);
   const truthBlock = buildSourceTruthBlock(profileText, sourceResumeText);
-  const today = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
 
   const systemPrompt = [
-    'You are an expert cover letter writer helping a job seeker create a tailored, human-sounding cover letter.',
+    'You are an expert cover letter writer.',
     HALLUCINATION_GUARD,
-    'Write in a professional but natural tone — avoid generic openers like "I am writing to express my interest".',
-    'The letter should feel personal, confident, and specific to the role.',
-    'Output plain text only. No markdown. No styling. The output slots into a Word template.',
+    'Return a structured JSON object containing the greetings and body paragraphs.',
+    'Write in a professional but natural tone.',
   ].join('\n\n');
+
+  const coverLetterSchema = {
+    greeting: "Dear [Hiring Manager Name or 'Hiring Manager'],",
+    paragraphs: [
+      "Intro paragraph...",
+      "Body paragraph 1...",
+      "Body paragraph 2...",
+      "Closing paragraph..."
+    ],
+    closing: "Sincerely,",
+    signOff: "Full Name"
+  };
 
   const userPrompt = [
     `JOB TITLE: ${jobData.jobTitle}`,
     `EMPLOYER: ${jobData.company}`,
-    `LOCATION: ${jobData.location}`,
-    `DATE: ${today}`,
-    '',
-    '=== JOB DESCRIPTION ===',
-    jobData.description,
-    '=== END JOB DESCRIPTION ===',
+    `=== JOB DESCRIPTION ===\n${jobData.description}\n=== END JOB DESCRIPTION ===`,
     '',
     truthBlock,
     '',
-    'TASK: Write a tailored cover letter for this specific job using the source resume / user profile above.',
-    'Structure:',
-    '- Date line',
-    '- Greeting (use "Dear Hiring Manager," if no specific contact is known)',
-    '- Opening paragraph: connect who they are to what the role needs (avoid clichés)',
-    '- 2–3 body paragraphs: match their relevant experience to the job requirements',
-    '- Closing paragraph: express genuine interest, reference next steps',
-    '- Sign-off with the user\'s name',
+    'TASK: Write a tailored cover letter for this job.',
     '',
-    'Do NOT mention the hiring manager\'s name unless it appears in the job description.',
-    'Output ONLY the cover letter body — no preamble, no commentary.',
+    JSON_OUTPUT_INSTRUCTION,
+    JSON.stringify(coverLetterSchema, null, 2),
   ].join('\n');
 
   return callAI(systemPrompt, userPrompt, settings);
@@ -131,14 +145,14 @@ export async function generateCoverLetter(jobData, profile, settings, sourceResu
 export async function reviseDraft(currentDraft, revisionRequest, docType, jobData, profile, settings) {
   if (isMock(settings)) return mockReviseDraft(currentDraft, revisionRequest, docType);
   const profileText = profileToPromptText(profile);
+  
+  const draftStr = typeof currentDraft === 'object' ? JSON.stringify(currentDraft, null, 2) : currentDraft;
 
   const systemPrompt = [
-    `You are revising a ${docType === 'resume' ? 'resume' : 'cover letter'} based on user feedback.`,
+    `You are revising a ${docType === 'resume' ? 'resume' : 'cover letter'} structured JSON based on user feedback.`,
     HALLUCINATION_GUARD,
-    'Revise only what the user asks. Preserve all other content.',
-    'Do NOT start from scratch unless the user explicitly says "rewrite from scratch" or "start over".',
-    'Output the complete revised document — not just the changed sections.',
-    'Output ONLY the revised document content. No commentary, no preamble.',
+    'Return the COMPLETE revised JSON object. Do not add fields not present in the original schema.',
+    'Maintain valid JSON format.',
   ].join('\n\n');
 
   const userPrompt = [
@@ -148,13 +162,13 @@ export async function reviseDraft(currentDraft, revisionRequest, docType, jobDat
     '',
     profileText,
     '',
-    `=== CURRENT ${docType.toUpperCase()} DRAFT ===`,
-    currentDraft,
+    `=== CURRENT ${docType.toUpperCase()} JSON DRAFT ===`,
+    draftStr,
     `=== END CURRENT DRAFT ===`,
     '',
     `USER REVISION REQUEST: "${revisionRequest}"`,
     '',
-    'Apply the requested changes to the draft above and return the complete revised document.',
+    'Apply the changes and return the full updated JSON.',
   ].join('\n');
 
   return callAI(systemPrompt, userPrompt, settings);

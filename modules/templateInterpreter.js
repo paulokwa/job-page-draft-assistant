@@ -70,9 +70,8 @@ async function extractDocumentXml(ab) {
 }
 
 /**
- * Parses the document XML and heuristically identifies likely section headings.
+ * Parses the document XML and heuristically identifies likely section headings and layout risks.
  * @param {ArrayBuffer} arrayBuffer The DOCX file ArrayBuffer
- * @returns {Promise<{ foundFormat: 'placeholders' | 'smart', headings: string[], placeholders: string[] }>}
  */
 export async function analyzeTemplate(arrayBuffer) {
   const xmlString = await extractDocumentXml(arrayBuffer);
@@ -85,43 +84,26 @@ export async function analyzeTemplate(arrayBuffer) {
     foundPlaceholders.add(`{{${match[1]}}}`);
   }
 
-  // Parse XML to look for headings
+  // Parse XML to look for headings and risks
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlString, 'application/xml');
   const wNamespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
   
+  const risk = calculateFormatRisk(xmlString);
   const headings = [];
   const paragraphs = doc.getElementsByTagNameNS(wNamespace, 'p');
   
   for (const p of paragraphs) {
-    // Extract text from paragraph
-    const runs = p.getElementsByTagNameNS(wNamespace, 'r');
-    let text = '';
-    for (const r of runs) {
-      const textNodes = r.getElementsByTagNameNS(wNamespace, 't');
-      for (const t of textNodes) {
-        text += t.textContent;
-      }
-    }
-    
-    text = text.trim();
+    let text = getTextFromNode(p, wNamespace).trim();
     if (!text) continue;
     
-    // Simple heuristics for heading detection:
-    // Short line (under 60 chars) AND (all uppercase OR title case)
-    const isShort = text.length > 0 && text.length < 60;
-    const isAllUpperCase = text === text.toUpperCase() && /[A-Z]/.test(text);
-    // Rough check for title case (first letter of words usually capitalized, no common bullet chars at start)
-    const isTitleCase = /^[A-Z][a-z]/.test(text) && !text.startsWith('•') && !text.startsWith('-');
-    
-    // Filter out apparent contact info lines if they contain emails or phones
-    const hasEmail = text.includes('@');
-    const hasPhone = /\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{4}/.test(text);
-    
-    if (isShort && (isAllUpperCase || isTitleCase) && !hasEmail && !hasPhone) {
+    // Heuristics for heading detection
+    if (isHeadingHeuristic(text)) {
       headings.push({
         text,
-        // We could store an index or identifier, but we will match by text later
+        node: p,
+        // Approximate context: number of bullets following this heading
+        bulletCount: countBulletsUntilNextHeading(p, wNamespace)
       });
     }
   }
@@ -129,8 +111,59 @@ export async function analyzeTemplate(arrayBuffer) {
   return {
     foundFormat: foundPlaceholders.size > 0 ? 'placeholders' : 'smart',
     headings: headings.map(h => h.text),
-    placeholders: [...foundPlaceholders].sort()
+    placeholders: [...foundPlaceholders].sort(),
+    risk,
+    structureMap: {
+      headings: headings.map(h => ({ text: h.text, bulletCount: h.bulletCount }))
+    }
   };
+}
+
+function calculateFormatRisk(xmlString) {
+  let score = 0;
+  // Floating elements / drawings are high risk
+  if (xmlString.includes('<wp:anchor') || xmlString.includes('<w:drawing')) score += 10;
+  if (xmlString.includes('<w:pict')) score += 10;
+  // Complex tables
+  if ((xmlString.match(/<w:tbl/g) || []).length > 2) score += 5;
+  // Text boxes
+  if (xmlString.includes('w:txbxContent')) score += 15;
+
+  if (score >= 20) return { level: 'high', score, message: 'Heavily custom layout detected. Formatting fidelity may not be perfect.' };
+  if (score >= 5) return { level: 'medium', score, message: 'Moderate complexity detected. Using cautious replacement logic.' };
+  return { level: 'low', score, message: 'Standard template layout.' };
+}
+
+function isHeadingHeuristic(text) {
+  const isShort = text.length > 0 && text.length < 60;
+  const isAllUpperCase = text === text.toUpperCase() && /[A-Z]/.test(text);
+  const isTitleCase = /^[A-Z][a-z]/.test(text) && !text.startsWith('•') && !text.startsWith('-');
+  const hasContactInfo = text.includes('@') || /\d{3}[-\s]?\d{3}[-\s]?\d{4}/.test(text);
+  return isShort && (isAllUpperCase || isTitleCase) && !hasContactInfo;
+}
+
+function getTextFromNode(node, ns) {
+  const texts = node.getElementsByTagNameNS(ns, 't');
+  let full = '';
+  for (const t of texts) full += t.textContent;
+  return full;
+}
+
+function countBulletsUntilNextHeading(startP, ns) {
+  let count = 0;
+  let curr = startP.nextSibling;
+  while (curr) {
+    if (curr.nodeName === 'w:p') {
+      const text = getTextFromNode(curr, ns).trim();
+      if (!text) { curr = curr.nextSibling; continue; }
+      if (isHeadingHeuristic(text)) break;
+      if (text.startsWith('•') || text.startsWith('-') || curr.getElementsByTagNameNS(ns, 'numPr').length > 0) {
+        count++;
+      }
+    }
+    curr = curr.nextSibling;
+  }
+  return count;
 }
 
 /**
@@ -229,13 +262,13 @@ function createParagraphNodes(doc, text, styleTemplateNode) {
 }
 
 /**
- * Inserts content into the template under the specified headings.
+ * Inserts structured content into the template.
  * @param {ArrayBuffer} arrayBuffer 
  * @param {Object} mapping Map of headingText -> "SUMMARY" | "EXPERIENCE" | ...
- * @param {Object} sectionsContent Map of "SUMMARY" -> "actual draft text"
+ * @param {Object} structuredContent The JSON content from AI
  * @returns {Blob} The finalized DOCX
  */
-export async function generateSmartDocument(arrayBuffer, mapping, sectionsContent) {
+export async function generateSmartDocument(arrayBuffer, mapping, structuredContent) {
   const PizZipLib = typeof PizZip !== 'undefined' ? PizZip : window.PizZip;
   if (!PizZipLib) throw new Error('PizZip library missing');
 
@@ -255,62 +288,50 @@ export async function generateSmartDocument(arrayBuffer, mapping, sectionsConten
   const wNamespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
   const paragraphs = doc.getElementsByTagNameNS(wNamespace, 'p');
-
-  // We need to find the headings, and for each heading, find its "next" sibling paragraph to understand body styling.
-  // Then we inject the generated nodes there. We process in reverse order so node insertion doesn't mess up iterators, 
-  // or we can just collect the injection points and do it safely.
-  
   const injectionPoints = [];
 
   for (let i = 0; i < paragraphs.length; i++) {
     const p = paragraphs[i];
-    
-    // Extract text from paragraph
-    const runs = p.getElementsByTagNameNS(wNamespace, 'r');
-    let text = '';
-    for (const r of runs) {
-      const textNodes = r.getElementsByTagNameNS(wNamespace, 't');
-      for (const t of textNodes) {
-        text += t.textContent;
-      }
-    }
-    
-    text = text.trim();
+    const text = getTextFromNode(p, wNamespace).trim();
     if (!text) continue;
 
-    // Check if this text matches any mapped heading exact text
-    const standardSectionKey = mapping[text];
-    if (standardSectionKey && sectionsContent[standardSectionKey]) {
-      // we found a heading that user mapped, and we have content for it.
-      
-      // Look ahead for style template. We'll find the next non-empty paragraph that isn't a heading itself
+    const mappedKey = mapping[text];
+    if (mappedKey && structuredContent[mappedKey]) {
       let styleTemplateNode = null;
       for (let j = i + 1; j < paragraphs.length; j++) {
-        const nextPText = paragraphs[j].textContent.trim();
-        if (nextPText.length > 0) { // simplistic check
+        if (getTextFromNode(paragraphs[j], wNamespace).trim()) {
            styleTemplateNode = paragraphs[j];
            break;
-        }
+         }
       }
-      
-      // If we didn't find a style template (e.g. at end of document), fallback to the heading node itself 
-      // although that might make text bold/large, it's better than nothing, or null to rely on Word defaults.
-      // Let's actually prefer null if no sibling found so it uses "Normal" style rather than duplicating Heading style.
       
       injectionPoints.push({
         headingNode: p,
         styleTemplateNode,
-        content: sectionsContent[standardSectionKey]
+        content: structuredContent[mappedKey]
       });
     }
   }
 
-  // Inject content in reverse to maintain DOM integrity (if we insert before/after, we don't invalidate later nodes)
   for (let point of injectionPoints.reverse()) {
     const { headingNode, styleTemplateNode, content } = point;
-    const newNodes = createParagraphNodes(doc, content, styleTemplateNode);
+    const newNodes = [];
+
+    if (Array.isArray(content)) {
+      // Handle list (e.g. skills or experience bullets)
+      for (const item of content) {
+        if (typeof item === 'string') {
+          newNodes.push(...createParagraphNodes(doc, item, styleTemplateNode));
+        } else if (typeof item === 'object') {
+          // Handle complex entries like work experience
+          newNodes.push(...createExperienceEntryNodes(doc, item, styleTemplateNode, wNamespace));
+        }
+      }
+    } else {
+      // Handle single block (summary)
+      newNodes.push(...createParagraphNodes(doc, content, styleTemplateNode));
+    }
     
-    // Insert new nodes immediately after the heading node
     let currentNode = headingNode;
     for (const newNode of newNodes) {
       if (currentNode.nextSibling) {
@@ -320,31 +341,29 @@ export async function generateSmartDocument(arrayBuffer, mapping, sectionsConten
       }
       currentNode = newNode;
     }
-    
-    // Optional: if there was sample text under the heading (before the next heading), maybe we should delete it?
-    // Wait, requirement 1 statement: "The template may contain empty space under these headings."
-    // We will just insert after the heading. The user can leave empty space. If they had dummy text, it might remain.
-    // For V1, simple insert is safer than attempting to delete dummy text which might accidentally delete the next section if our heuristics fail.
   }
 
-  // Serialize back to string
   const serializer = new XMLSerializer();
   let newXmlString = serializer.serializeToString(doc);
-  
-  // Note: DOMParser/XMLSerializer might drop the XML declaration <?xml ...?> so let's prepend it if needed
   if (!newXmlString.startsWith('<?xml')) {
-    newXmlString = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\\n' + newXmlString;
+    newXmlString = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + newXmlString;
   }
 
-  // Update zip
   zip.file('word/document.xml', newXmlString);
 
-  // Generate Blob
-  const out = zip.generate({
+  return zip.generate({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     compression: 'DEFLATE',
   });
+}
 
-  return out;
+function createExperienceEntryNodes(doc, exp, styleTemplate, ns) {
+  const nodes = [];
+  nodes.push(...createParagraphNodes(doc, exp.title, styleTemplate));
+  nodes.push(...createParagraphNodes(doc, `${exp.company} | ${exp.dates}`, styleTemplate));
+  for (const b of exp.bullets) {
+    nodes.push(...createParagraphNodes(doc, `• ${b}`, styleTemplate));
+  }
+  return nodes;
 }

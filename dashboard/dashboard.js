@@ -70,6 +70,14 @@ const dom = {
   settingsView:       $('settings-view'),
   btnCloseSettings:   $('btn-close-settings'),
   settingsFrame:      $('settings-frame'),
+  riskWarning:        $('risk-warning'),
+  riskLevel:          $('risk-level'),
+  riskMessage:        $('risk-message'),
+};
+
+const state_templates = {
+  resume: null, // { ab, analysis }
+  cl: null      // { ab, analysis }
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -251,36 +259,94 @@ async function runGeneration(mode) {
   setGenerating(true);
   resetConfirm();
   hideError();
+  dom.riskWarning.classList.add('hidden');
 
   const toGenerate = mode === 'both' ? ['resume', 'cover-letter'] : [mode];
 
   try {
+    // 1. Analyze templates if available
+    await analyzeActiveTemplates(toGenerate);
+
     for (const docType of toGenerate) {
       dom.genStatusText.textContent = docType === 'resume' ? 'Generating resume…' : 'Generating cover letter…';
 
-      let draft;
+      const templateData = docType === 'resume' ? state_templates.resume : state_templates.cl;
+      const templateMap = templateData?.analysis?.structureMap || null;
+
+      let rawDraft;
       if (docType === 'resume') {
-        draft = await generateResume(state.jobData, state.profile, state.settings, state.sourceResumeText);
+        rawDraft = await generateResume(state.jobData, state.profile, state.settings, state.sourceResumeText, templateMap);
       } else {
-        draft = await generateCoverLetter(state.jobData, state.profile, state.settings, state.sourceResumeText);
+        rawDraft = await generateCoverLetter(state.jobData, state.profile, state.settings, state.sourceResumeText);
       }
 
-      state.drafts[docType] = draft;
-      renderDraft(docType, draft);
+      // Try to parse JSON
+      try {
+        const parsed = JSON.parse(rawDraft.replace(/```json\n?|\n?```/g, '').trim());
+        state.drafts[docType] = parsed;
+        renderDraft(docType, formatDraftForDisplay(docType, parsed));
+      } catch (err) {
+        console.warn('AI failed to return valid JSON, falling back to raw text:', err);
+        state.drafts[docType] = rawDraft;
+        renderDraft(docType, rawDraft);
+      }
     }
 
     // Switch to first generated tab
     switchTab(toGenerate[0]);
     enableRevisionButtons(true);
-
-    // Try AI instruction detection now that we have settings
     extractInstructionsWithAI();
-
     showToast('✅ Draft generated successfully!');
   } catch (e) {
     showError(e.message || 'Generation failed. Please check your Settings.');
   } finally {
     setGenerating(false);
+  }
+}
+
+async function analyzeActiveTemplates(types) {
+  const { analyzeTemplate } = await import('../modules/templateInterpreter.js');
+  
+  for (const type of types) {
+    const templateKey = type === 'resume' ? 'resumeTemplate' : 'coverLetterTemplate';
+    const localData = await chrome.storage.local.get([templateKey]);
+    let templateB64 = localData[templateKey] || state.sourceResumeTemplate;
+
+    if (templateB64) {
+      const ab = base64ToArrayBuffer(templateB64);
+      const analysis = await analyzeTemplate(ab);
+      state_templates[type === 'resume' ? 'resume' : 'cl'] = { ab, analysis };
+      
+      if (analysis.risk.level !== 'low') {
+        showRiskWarning(analysis.risk);
+      }
+    }
+  }
+}
+
+function showRiskWarning(risk) {
+  dom.riskLevel.textContent = risk.level.toUpperCase() + ' RISK';
+  dom.riskMessage.textContent = risk.message;
+  dom.riskWarning.classList.remove('hidden');
+}
+
+function formatDraftForDisplay(docType, parsed) {
+  if (docType === 'resume') {
+    return [
+      `SUMMARY: ${parsed.summary}`,
+      `SKILLS: ${parsed.skills.join(', ')}`,
+      '\nEXPERIENCE:',
+      ...parsed.workExperience.map(exp => `- ${exp.title} at ${exp.company} (${exp.dates})\n  ${exp.bullets.join('\n  ')}`)
+    ].join('\n');
+  } else {
+    return [
+      parsed.greeting,
+      '',
+      ...parsed.paragraphs,
+      '',
+      parsed.closing,
+      parsed.signOff
+    ].join('\n');
   }
 }
 
@@ -375,9 +441,19 @@ async function applyRevision() {
   dom.whatChanged.classList.add('hidden');
 
   try {
-    const revised = await reviseDraft(currentDraft, request, docType, state.jobData, state.profile, state.settings);
-    state.drafts[docType] = revised;
-    renderDraft(docType, revised);
+    const rawRevised = await reviseDraft(currentDraft, request, docType, state.jobData, state.profile, state.settings);
+    
+    // Try to parse JSON
+    try {
+      const parsed = JSON.parse(rawRevised.replace(/```json\n?|\n?```/g, '').trim());
+      state.drafts[docType] = parsed;
+      renderDraft(docType, formatDraftForDisplay(docType, parsed));
+    } catch (err) {
+      console.warn('Revision AI failed to return valid JSON, falling back to raw text:', err);
+      state.drafts[docType] = rawRevised;
+      renderDraft(docType, rawRevised);
+    }
+
     resetConfirm();
 
     // Simple "what changed" note
@@ -469,11 +545,28 @@ async function saveDocs(docTypes) {
         let blob;
         
         if (mode === 'smart') {
-          // dataMap actually has mapped keys like SUMMARY -> content. We can re-use it as sectionsContent!
-          const dataMap  = draftToDataMap(draft, state.profile, state.jobData, docType);
-          const mapping  = (state.docSettings?.templateMapping || {})[docType] || {};
+          const mapping = (state.docSettings?.templateMapping || {})[docType] || {};
           
-          blob = await generateSmartDocument(ab, mapping, dataMap);
+          // Use standard structure keys if no custom mapping exists
+          const finalMapping = { ...mapping };
+          if (docType === 'resume' && !Object.keys(finalMapping).length) {
+            // Heuristic default mapping for standard sections
+            const analysis = docType === 'resume' ? state_templates.resume?.analysis : state_templates.cl?.analysis;
+            if (analysis?.headings) {
+               analysis.headings.forEach(h => {
+                 const low = h.toLowerCase();
+                 if (low.includes('summary') || low.includes('profile')) finalMapping[h] = 'summary';
+                 if (low.includes('skills')) finalMapping[h] = 'skills';
+                 if (low.includes('experience')) finalMapping[h] = 'workExperience';
+                 if (low.includes('education')) finalMapping[h] = 'education';
+               });
+            }
+          } else if (docType === 'cover-letter') {
+             // For cover letters, we often just replace one body block or paragraphs
+             // If smart document sees 'paragraphs' in structured draft, it will inject them
+          }
+
+          blob = await generateSmartDocument(ab, finalMapping, draft);
         } else {
           // Legacy advanced placeholders
           const dataMap  = draftToDataMap(draft, state.profile, state.jobData, docType);

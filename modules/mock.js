@@ -29,48 +29,38 @@ function getSkills(profile) {
 export async function generateMockResume(jobData, profile, sourceResumeText) {
   await delay(700);
 
-  const name     = getName(profile);
-  const email    = profile?.personal?.email    || 'your.email@example.com';
-  const phone    = profile?.personal?.phone    || '(000) 000-0000';
-  const address  = profile?.personal?.address  || 'Your City, Province';
-  const linkedin = profile?.personal?.linkedin || '';
-  const skills   = getSkills(profile);
+  const skills = getSkills(profile);
   const jobTitle = jobData.jobTitle || 'the advertised position';
-  const company  = jobData.company  || 'your organization';
+  const company = jobData.company || 'your organization';
 
-  // Pull first experience for Work Experience section
   const exp = profile?.experience?.[0];
-  const expBlock = exp
-    ? `${exp.title} — ${exp.company} (${exp.dates || 'Dates'})
-${exp.bullets || '• Managed client files and maintained accurate documentation.\n• Collaborated with multidisciplinary teams to support service delivery.\n• Responded to inquiries and resolved concerns professionally.'}`
-    : `Support Specialist — Previous Employer (2020 – Present)
-• Managed client files and maintained accurate documentation.
-• Collaborated with multidisciplinary teams to support service delivery.
-• Responded to inquiries and resolved concerns professionally.`;
+  const mockWorkExperience = [
+    {
+      title: exp?.title || "Staff Consultant",
+      company: exp?.company || "Sample Corp",
+      dates: exp?.dates || "2021 – Present",
+      bullets: (exp?.bullets || "Managed client files.\nCollaborated with teams.\nResolved inquiries.").split('\n').map(b => b.trim().replace(/^[•\-\*]\s*/, ''))
+    }
+  ];
 
-  // Pull education
   const edu = profile?.education?.[0];
-  const eduLine = edu
-    ? `${edu.degree} — ${edu.school}${edu.year ? ` (${edu.year})` : ''}`
-    : 'Degree / Diploma — Institution Name';
+  const mockEducation = [
+    {
+      degree: edu?.degree || "Bachelor of Science",
+      school: edu?.school || "University of Examples",
+      year: edu?.year || "2020"
+    }
+  ];
 
-  return `${name}
-${email} | ${phone} | ${address}${linkedin ? ` | ${linkedin}` : ''}
+  const result = {
+    summary: `Experienced professional seeking to bring strengths in communication and stakeholder support to the ${jobTitle} role at ${company}. [MOCK MODE]`,
+    skills: skills,
+    workExperience: mockWorkExperience,
+    education: mockEducation,
+    certifications: ["Mock Certification A", "Mock Certification B"]
+  };
 
-PROFESSIONAL SUMMARY
-Experienced professional with a background in client services, communication, and stakeholder support. Skilled at handling complex requests, maintaining clear documentation, and contributing effectively to team goals. Seeking to bring these strengths to the ${jobTitle} role at ${company}.
-
-CORE SKILLS
-${skills.map(s => `• ${s}`).join('\n')}
-
-WORK EXPERIENCE
-${expBlock}
-
-EDUCATION
-${eduLine}
-
-[MOCK MODE — This is a simulated draft. Switch to a real AI provider to generate a fully tailored resume.]
-${sourceResumeText ? '[✅ Source Resume detected and used as primary factual basis.]' : ''}`;
+  return JSON.stringify(result, null, 2);
 }
 
 // ── Mock Cover Letter ──────────────────────────────────────────────────────
@@ -78,28 +68,22 @@ ${sourceResumeText ? '[✅ Source Resume detected and used as primary factual ba
 export async function generateMockCoverLetter(jobData, profile, sourceResumeText) {
   await delay(600);
 
-  const name    = getName(profile);
+  const name = getName(profile);
   const jobTitle = jobData.jobTitle || '[Job Title]';
-  const company  = jobData.company  || '[Company]';
-  const today    = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+  const company = jobData.company || '[Company]';
 
-  return `${today}
+  const result = {
+    greeting: "Dear Hiring Manager,",
+    paragraphs: [
+      `I am pleased to submit my application for the ${jobTitle} position at ${company}. [MOCK MODE]`,
+      "My background in client support and problem-solving aligns well with the responsibilities described in your posting.",
+      "I look forward to the opportunity to discuss how my experience aligns with your needs."
+    ],
+    closing: "Sincerely,",
+    signOff: name
+  };
 
-Dear Hiring Manager,
-
-I am pleased to submit my application for the ${jobTitle} position at ${company}. My background in client support, communication, and problem-solving aligns well with the responsibilities described in your posting.
-
-In previous roles I have worked closely with clients and internal teams to resolve issues efficiently, while maintaining accurate documentation and clear communication across all stakeholder groups. I take pride in delivering consistent, high-quality service and adapting quickly to changing priorities.
-
-I would welcome the opportunity to contribute these skills to the team at ${company} and am confident I can make a meaningful impact from day one.
-
-Thank you for considering my application. I look forward to the opportunity to discuss how my experience aligns with your needs.
-
-Sincerely,
-${name}
-
-[MOCK MODE — This is a simulated draft. Switch to a real AI provider to generate a fully tailored cover letter.]
-${sourceResumeText ? '[✅ Source Resume detected and used as primary factual basis.]' : ''}`;
+  return JSON.stringify(result, null, 2);
 }
 
 // ── Mock Revision ──────────────────────────────────────────────────────────
