@@ -2,9 +2,9 @@
 // Registers context menu and routes messages between content script and dashboard.
 
 const MENU_ITEMS = [
-  { id: 'create-resume',       title: 'Create Resume' },
+  { id: 'create-resume', title: 'Create Resume' },
   { id: 'create-cover-letter', title: 'Create Cover Letter' },
-  { id: 'create-both',         title: 'Create Both' },
+  { id: 'create-both', title: 'Create Both' },
 ];
 
 // ── Setup ──────────────────────────────────────────────────────────────────
@@ -44,9 +44,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   (async () => {
     // Map menu id to mode
     const modeMap = {
-      'create-resume':       'resume',
+      'create-resume': 'resume',
       'create-cover-letter': 'cover-letter',
-      'create-both':         'both',
+      'create-both': 'both',
     };
     const mode = modeMap[info.menuItemId];
 
@@ -60,9 +60,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     } catch (e) {
       // Content script may not be injected yet — inject and retry
       try {
-        await chrome.scripting.executeScript({ 
-          target: { tabId: tab.id, allFrames: true }, 
-          files: ['content.js'] 
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: true },
+          files: ['content.js']
         });
         response = await chrome.tabs.sendMessage(tab.id, { type: 'CAPTURE_CONTENT' });
       } catch (err) {
@@ -79,7 +79,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     });
 
     // Tell any already open dashboard to reload session
-    chrome.runtime.sendMessage({ type: 'SESSION_UPDATED' }).catch(() => {});
+    chrome.runtime.sendMessage({ type: 'SESSION_UPDATED' }).catch(() => { });
   })();
 });
 
