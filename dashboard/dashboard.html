@@ -101,10 +101,15 @@
         <div class="card-header">
           <span class="card-title">⚡ Generate</span>
         </div>
-        <div class="generate-buttons">
+        <div class="generate-buttons" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
           <button id="btn-gen-resume"       class="btn-primary">Generate Resume</button>
+          <button id="btn-gen-resume-ai"    class="btn-secondary">Generate HTML Resume</button>
+          
           <button id="btn-gen-cover-letter" class="btn-primary">Generate Cover Letter</button>
-          <button id="btn-gen-both"         class="btn-primary btn-accent">Generate Both</button>
+          <button id="btn-gen-cl-ai"        class="btn-secondary">Generate HTML CV</button>
+          
+          <button id="btn-gen-both"         class="btn-primary btn-accent" style="grid-column: span 1;">Generate Both</button>
+          <button id="btn-gen-both-ai"      class="btn-secondary btn-accent" style="grid-column: span 1;">Generate Both (HTML)</button>
         </div>
         <div id="gen-status" class="gen-status hidden">
           <div class="spinner"></div>

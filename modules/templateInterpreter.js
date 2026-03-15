@@ -287,30 +287,80 @@ export async function generateSmartDocument(arrayBuffer, mapping, structuredCont
   const doc = parser.parseFromString(xmlString, 'application/xml');
   const wNamespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
+  // Helper for "Fuzzy" comparison
+  const fuzzy = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // Normalize the mapping keys for resilient matching
+  const normalizedMapping = {};
+  for (const key in mapping) {
+    normalizedMapping[fuzzy(key)] = mapping[key];
+  }
+
   const paragraphs = doc.getElementsByTagNameNS(wNamespace, 'p');
   const injectionPoints = [];
+  const injectedKeys = new Set(); // track what we've injected to prevent duplicates if headings repeat
+
+  console.log('TEMPLATE DEBUG: Analyzing headings with FUZZY + INLINE HEURISTIC matching...');
 
   for (let i = 0; i < paragraphs.length; i++) {
     const p = paragraphs[i];
     const text = getTextFromNode(p, wNamespace).trim();
     if (!text) continue;
 
-    const mappedKey = mapping[text];
-    if (mappedKey && structuredContent[mappedKey]) {
+    const fuzzyText = fuzzy(text);
+    let mappedKey = normalizedMapping[fuzzyText];
+    
+    // INLINE FALLBACK HEURISTIC
+    // If we didn't get a strict match from dashboard mapping, try to guess if the text is a heading locally
+    const isLikelyHeading = text.length > 0 && text.length < 50 && !text.includes('.') && !text.includes('@');
+    if (!mappedKey && isLikelyHeading) {
+      if (fuzzyText.includes('summary') || fuzzyText.includes('profile') || fuzzyText.includes('about')) mappedKey = 'summary';
+      else if (fuzzyText.includes('skills') || fuzzyText.includes('competencies') || fuzzyText.includes('expertise') || fuzzyText.includes('technical')) mappedKey = 'skills';
+      else if (fuzzyText.includes('experience') || fuzzyText.includes('employment') || fuzzyText.includes('history') || fuzzyText.includes('work')) mappedKey = 'workExperience';
+      else if (fuzzyText.includes('education') || fuzzyText.includes('academic')) mappedKey = 'education';
+      else if (fuzzyText.includes('certifications') || fuzzyText.includes('licenses') || fuzzyText.includes('training')) mappedKey = 'certifications';
+    }
+
+    if (mappedKey) {
+      console.log(`TEMPLATE DEBUG: [MATCH FOUND] "${text}" -> "${mappedKey}"`);
+    }
+
+    const isStringFallback = typeof structuredContent === 'string';
+    
+    // Only inject if it's a string fallback OR we found a valid key that HAS NOT been injected yet
+    if ((isStringFallback && injectionPoints.length === 0) || (mappedKey && structuredContent[mappedKey] && !injectedKeys.has(mappedKey))) {
+      
+      if (mappedKey) injectedKeys.add(mappedKey);
+
       let styleTemplateNode = null;
+      // Look forward for a style template node (next paragraph that has text)
       for (let j = i + 1; j < paragraphs.length; j++) {
-        if (getTextFromNode(paragraphs[j], wNamespace).trim()) {
-           styleTemplateNode = paragraphs[j];
-           break;
-         }
+        const nextText = getTextFromNode(paragraphs[j], wNamespace).trim();
+        if (nextText) {
+          styleTemplateNode = paragraphs[j];
+          break;
+        }
       }
       
       injectionPoints.push({
         headingNode: p,
         styleTemplateNode,
-        content: structuredContent[mappedKey]
+        content: isStringFallback ? structuredContent : structuredContent[mappedKey]
       });
     }
+
+
+
+  }
+
+  // SANITY TEST / FALLBACK: If no injection points were found, force into first paragraph
+  if (injectionPoints.length === 0 && paragraphs.length > 0) {
+    console.warn('No headings matched. Using SANITY FALLBACK: Injecting into first paragraph.');
+    injectionPoints.push({
+      headingNode: paragraphs[0],
+      styleTemplateNode: paragraphs.length > 1 ? paragraphs[1] : null,
+      content: typeof structuredContent === 'string' ? structuredContent : JSON.stringify(structuredContent, null, 2)
+    });
   }
 
   for (let point of injectionPoints.reverse()) {

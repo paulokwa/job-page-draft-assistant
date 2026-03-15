@@ -94,6 +94,33 @@ export async function generateResume(jobData, profile, settings, sourceResumeTex
   return callAI(systemPrompt, userPrompt, settings);
 }
 
+export async function generateHtmlResume(jobData, profile, settings, sourceResumeText = '') {
+  if (isMock(settings)) return '<h1>Mock Styled Resume</h1><p>Not supported in mock mode.</p>';
+  const profileText = profileToPromptText(profile);
+  const truthBlock = buildSourceTruthBlock(profileText, sourceResumeText);
+
+  const systemPrompt = [
+    'You are an expert resume writer and web designer.',
+    HALLUCINATION_GUARD,
+    'You must return a fully complete, styled HTML document.',
+    'Use inline CSS or a <style> block to make it look highly professional, modern, and beautiful.',
+    'Include appropriate semantic tags (<h1>, <h2>, <ul>, <p>).',
+    'Do NOT wrap the output in ```html or any markdown blocks. Output RAW HTML.',
+  ].join('\n\n');
+
+  const userPrompt = [
+    `JOB TITLE: ${jobData.jobTitle}`,
+    `EMPLOYER: ${jobData.company}`,
+    `=== JOB DESCRIPTION ===\n${jobData.description}\n=== END JOB DESCRIPTION ===`,
+    '',
+    truthBlock,
+    '',
+    'TASK: Write a fully styled HTML resume tailored for this job based solely on the source resume & user profile.',
+  ].join('\n');
+
+  return callAI(systemPrompt, userPrompt, settings);
+}
+
 // ── Cover Letter Generation ───────────────────────────────────────────────
 
 export async function generateCoverLetter(jobData, profile, settings, sourceResumeText = '') {
@@ -136,6 +163,32 @@ export async function generateCoverLetter(jobData, profile, settings, sourceResu
   return callAI(systemPrompt, userPrompt, settings);
 }
 
+export async function generateHtmlCoverLetter(jobData, profile, settings, sourceResumeText = '') {
+  if (isMock(settings)) return '<h1>Mock Styled Cover Letter</h1><p>Not supported in mock mode.</p>';
+  const profileText = profileToPromptText(profile);
+  const truthBlock = buildSourceTruthBlock(profileText, sourceResumeText);
+
+  const systemPrompt = [
+    'You are an expert career coach and web designer.',
+    HALLUCINATION_GUARD,
+    'You must return a fully complete, beautifully styled HTML document representing a cover letter.',
+    'Use inline CSS or an internal <style> block to make it look highly professional, modern, and beautiful.',
+    'Do NOT wrap the output in ```html or any markdown blocks. Output RAW HTML ONLY.',
+  ].join('\n\n');
+
+  const userPrompt = [
+    `JOB TITLE: ${jobData.jobTitle}`,
+    `EMPLOYER: ${jobData.company}`,
+    `=== JOB DESCRIPTION ===\n${jobData.description}\n=== END JOB DESCRIPTION ===`,
+    '',
+    truthBlock,
+    '',
+    'TASK: Write a fully tailored, beautifully styled HTML cover letter for this job based solely on the source resume & user profile.',
+  ].join('\n');
+
+  return callAI(systemPrompt, userPrompt, settings);
+}
+
 // ── Draft Revision ─────────────────────────────────────────────────────────
 
 /**
@@ -153,6 +206,7 @@ export async function reviseDraft(currentDraft, revisionRequest, docType, jobDat
     HALLUCINATION_GUARD,
     'Return the COMPLETE revised JSON object. Do not add fields not present in the original schema.',
     'Maintain valid JSON format.',
+    'IMPORTANT: The "USER REVISION REQUEST" may contain new, corrected, or updated factual information about the user. You SHOULD use this information to update the draft, even if it is not present in the original User Profile below. Treat the revision request as the most current source of truth for specific changes requested.',
   ].join('\n\n');
 
   const userPrompt = [
@@ -168,7 +222,7 @@ export async function reviseDraft(currentDraft, revisionRequest, docType, jobDat
     '',
     `USER REVISION REQUEST: "${revisionRequest}"`,
     '',
-    'Apply the changes and return the full updated JSON.',
+    'Apply the changes requested in the USER REVISION REQUEST and return the full updated JSON.',
   ].join('\n');
 
   return callAI(systemPrompt, userPrompt, settings);

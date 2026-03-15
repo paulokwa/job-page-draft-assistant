@@ -294,12 +294,13 @@ async function saveDocuments() {
 // ── Templates ─────────────────────────────────────────────────────────────
 async function populateTemplateStatus() {
   // Check local storage for the actual templates to confirm they exist
-  const localData = await chrome.storage.local.get(['resumeTemplate', 'coverLetterTemplate', 'sourceResumeName']);
+  const localData = await chrome.storage.local.get(['resumeTemplate', 'coverLetterTemplate', 'sourceResumeTemplate', 'sourceResumeName']);
 
-  if (localData.sourceResumeName) {
+  if (localData.sourceResumeTemplate) {
     $('source-resume-badge').classList.remove('hidden');
-    $('source-upload-text').textContent = `${localData.sourceResumeName} uploaded ✓ (click to replace)`;
-    $('source-resume-active-bar').textContent = `📄 Active Source: ${localData.sourceResumeName}`;
+    const name = localData.sourceResumeName || 'source resume';
+    $('source-upload-text').textContent = `${name} uploaded ✓ (click to replace)`;
+    $('source-resume-active-bar').textContent = `📄 Active Source: ${name}`;
     $('source-resume-active-bar').classList.remove('hidden');
   }
 

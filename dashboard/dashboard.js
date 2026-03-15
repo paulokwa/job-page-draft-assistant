@@ -1,7 +1,7 @@
 // dashboard/dashboard.js — Main dashboard controller
 
 import { extractJobFields, detectSpecialInstructions } from '../modules/extraction.js';
-import { generateResume, generateCoverLetter, reviseDraft, detectSpecialInstructionsAI } from '../modules/drafting.js';
+import { generateResume, generateCoverLetter, reviseDraft, detectSpecialInstructionsAI, generateHtmlResume, generateHtmlCoverLetter } from '../modules/drafting.js';
 import { loadProfile } from '../modules/profile.js';
 import { fillTemplate, fileToArrayBuffer, downloadBlob, buildFilename, draftToDataMap, validateTemplate } from '../modules/template.js';
 import { generateSmartDocument } from '../modules/templateInterpreter.js';
@@ -183,13 +183,22 @@ function bindEvents() {
     }
   });
 
-  // Listen for settings changes across tabs to update the mock banner dynamically
+  // Listen for settings changes across tabs to update the mock banner and templates dynamically
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.providerSettings) {
       state.settings = changes.providerSettings.newValue;
       const isMock = state.settings?.provider === 'mock';
       dom.mockBanner.classList.toggle('hidden', !isMock);
     }
+    if (area === 'local') {
+      if (changes.sourceResumeTemplate) state.sourceResumeTemplate = changes.sourceResumeTemplate.newValue;
+      if (changes.sourceResumeText)     state.sourceResumeText     = changes.sourceResumeText.newValue;
+      
+      // Clear cached analysis if specific templates change
+      if (changes.resumeTemplate)       state_templates.resume = null;
+      if (changes.coverLetterTemplate)  state_templates.cl     = null;
+    }
+
   });
 
   // Settings buttons
@@ -216,8 +225,13 @@ function bindEvents() {
 
   // Generate buttons
   dom.btnGenResume.addEventListener('click', () => runGeneration('resume'));
+  document.getElementById('btn-gen-resume-ai').addEventListener('click', () => runGeneration('resume', true));
+  
   dom.btnGenCL.addEventListener('click',     () => runGeneration('cover-letter'));
+  document.getElementById('btn-gen-cl-ai').addEventListener('click', () => runGeneration('cover-letter', true));
+  
   dom.btnGenBoth.addEventListener('click',   () => runGeneration('both'));
+  document.getElementById('btn-gen-both-ai').addEventListener('click', () => runGeneration('both', true));
 
   // Extract instructions
   dom.btnExtractInstr.addEventListener('click', extractInstructionsWithAI);
@@ -260,14 +274,15 @@ function switchTab(tab) {
 }
 
 // ── Generation ────────────────────────────────────────────────────────────
-async function runGeneration(mode) {
-  if (!validateForGeneration()) return;
+async function runGeneration(mode, isAutopilot = false) {
+  if (!await validateForGeneration(mode)) return;
 
   state.jobData.jobTitle    = dom.fieldTitle.value;
   state.jobData.company     = dom.fieldCompany.value;
   state.jobData.location    = dom.fieldLocation.value;
   state.jobData.description = dom.fieldDesc.value;
   state.lastRunMode = mode;
+  state.isAutopilot = isAutopilot; // track this for saving
 
   setGenerating(true);
   resetConfirm();
@@ -287,24 +302,47 @@ async function runGeneration(mode) {
       const templateMap = templateData?.analysis?.structureMap || null;
 
       let rawDraft;
-      if (docType === 'resume') {
-        rawDraft = await generateResume(state.jobData, state.profile, state.settings, state.sourceResumeText, templateMap);
-      } else {
-        rawDraft = await generateCoverLetter(state.jobData, state.profile, state.settings, state.sourceResumeText);
-      }
+      if (isAutopilot) {
+         if (docType === 'resume') {
+           rawDraft = await generateHtmlResume(state.jobData, state.profile, state.settings, state.sourceResumeText);
+         } else {
+           rawDraft = await generateHtmlCoverLetter(state.jobData, state.profile, state.settings, state.sourceResumeText);
+         }
+         // Clean up markdown wrapping if the AI accidentally included it
+         rawDraft = rawDraft.replace(/^```html/i, '').replace(/```$/i, '').trim();
+         
+         state.drafts[docType] = { isHtml: true, html: rawDraft };
+         
+         // For HTML, we render it directly in the pre block (or an iframe, but pre is safer for now if we use innerHTML on a wrapper)
+         const container = docType === 'resume' ? dom.draftResumeText : dom.draftCLText;
+         const wrapper = docType === 'resume' ? dom.draftResumeContent : dom.draftCLContent;
+         const empty   = docType === 'resume' ? dom.draftResumeEmpty : dom.draftCLEmpty;
 
-      // Try to parse JSON
-      try {
-        const parsed = JSON.parse(rawDraft.replace(/```json\n?|\n?```/g, '').trim());
-        state.drafts[docType] = parsed;
-        renderDraft(docType, formatDraftForDisplay(docType, parsed));
-      } catch (err) {
-        console.warn('AI failed to return valid JSON, falling back to raw text:', err);
-        state.drafts[docType] = rawDraft;
-        renderDraft(docType, rawDraft);
+         empty.classList.add('hidden');
+         wrapper.classList.remove('hidden');
+
+         container.innerHTML = rawDraft; 
+         // Add some padding/background to the container to make the HTML pop
+         container.style.backgroundColor = '#fff';
+         container.style.padding = '20px';
+         container.style.borderRadius = '8px';
+         container.style.color = '#333';
+      } else {
+        if (docType === 'resume') {
+          rawDraft = await generateResume(state.jobData, state.profile, state.settings, state.sourceResumeText, templateMap);
+        } else {
+          rawDraft = await generateCoverLetter(state.jobData, state.profile, state.settings, state.sourceResumeText);
+        }
+
+        // Try to parse JSON robustly
+        const parsed = tryParseJson(rawDraft);
+        if (parsed) {
+          state.drafts[docType] = parsed;
+          renderDraft(docType, formatDraftForDisplay(docType, parsed));
+        }
       }
     }
-
+    
     // Switch to first generated tab
     switchTab(toGenerate[0]);
     enableRevisionButtons(true);
@@ -363,7 +401,7 @@ function formatDraftForDisplay(docType, parsed) {
   }
 }
 
-function validateForGeneration() {
+async function validateForGeneration(mode) {
   const isMock = state.settings?.provider === 'mock';
 
   if (!state.settings?.provider) {
@@ -379,6 +417,30 @@ function validateForGeneration() {
     showError('Your profile is missing. Please open ⚙ Settings and fill in your profile before generating.');
     return false;
   }
+
+  // Template check (only if not mock)
+  if (!isMock) {
+    const toCheck = mode === 'both' ? ['resume', 'cover-letter'] : [mode];
+    const localData = await chrome.storage.local.get(['resumeTemplate', 'coverLetterTemplate', 'sourceResumeTemplate']);
+    
+    // Diagnostic check for "missing" templates
+    const missing = [];
+    for (const type of toCheck) {
+      const template = type === 'resume' ? localData.resumeTemplate : localData.coverLetterTemplate;
+      const hasTemplate = !!template;
+      const hasFallback = !!localData.sourceResumeTemplate;
+      
+      if (!hasTemplate && !hasFallback) {
+         missing.push(type === 'resume' ? 'Resume Template' : 'Cover Letter Template');
+      }
+    }
+
+    if (missing.length > 0) {
+      showError(`Missing required .docx template for: ${missing.join(', ')}. Please upload a .docx template OR a Source Resume in ⚙ Settings.`);
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -456,23 +518,22 @@ async function applyRevision() {
   try {
     const rawRevised = await reviseDraft(currentDraft, request, docType, state.jobData, state.profile, state.settings);
     
-    // Try to parse JSON
-    try {
-      const parsed = JSON.parse(rawRevised.replace(/```json\n?|\n?```/g, '').trim());
+    const parsed = tryParseJson(rawRevised);
+    if (parsed) {
       state.drafts[docType] = parsed;
       renderDraft(docType, formatDraftForDisplay(docType, parsed));
-    } catch (err) {
-      console.warn('Revision AI failed to return valid JSON, falling back to raw text:', err);
+    } else {
+      console.warn('Revision AI failed to return valid JSON, falling back to raw text');
       state.drafts[docType] = rawRevised;
       renderDraft(docType, rawRevised);
     }
+
 
     resetConfirm();
 
     // Simple "what changed" note
     dom.whatChangedText.textContent = `Applied: "${request}"`;
     dom.whatChanged.classList.remove('hidden');
-    dom.fieldRevision.value = '';
     dom.fieldRevision.value = '';
     showToast('✅ Draft revised!');
   } catch (e) {
@@ -537,18 +598,46 @@ async function saveDocs(docTypes) {
     }
 
     const typeLabel = docType === 'resume' ? 'Resume' : 'Cover Letter';
+    
+    // Check if this is an AI Autopilot HTML draft
+    if (draft.isHtml) {
+      const filename = buildFilename(pattern, { ...state.jobData, docType: typeLabel }).replace('.docx', '.html');
+      // Wrap it in a basic HTML5 boilerplate to ensure it renders correctly on standalone open
+      const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${filename}</title>
+</head>
+<body style="background: #f0f2f5; padding: 40px; font-family: sans-serif; display: flex; justify-content: center;">
+  <div style="background: white; padding: 40px; max-width: 800px; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 8px;">
+    ${draft.html}
+  </div>
+</body>
+</html>`;
+      const blob = new Blob([fullHtml], { type: 'text/html' });
+      downloadBlob(blob, filename);
+      showToast(`💾 Saved HTML: ${filename}`);
+      continue;
+    }
+
+    // Standard DOCX Flow
     const filename  = buildFilename(pattern, { ...state.jobData, docType: typeLabel });
 
     // Try using stored template
     const templateKey = docType === 'resume' ? 'resumeTemplate' : 'coverLetterTemplate';
-    const localData = await chrome.storage.local.get([templateKey]);
+    const localData = await chrome.storage.local.get([templateKey, 'sourceResumeTemplate']);
+
     let templateB64 = localData[templateKey];
 
     // Fallback: If no specific design template is uploaded, use the Source Resume as the layout wrapper.
-    if (!templateB64 && state.sourceResumeTemplate) {
-      templateB64 = state.sourceResumeTemplate;
-      showToast(`ℹ️ No specific Template found. Using your Source Resume as the DOCX template.`);
+    if (!templateB64) {
+      templateB64 = localData.sourceResumeTemplate;
+      if (templateB64) {
+        showToast(`ℹ️ No specific Template found. Using your Source Resume as the DOCX template.`);
+      }
     }
+
 
     if (templateB64) {
       try {
@@ -566,20 +655,32 @@ async function saveDocs(docTypes) {
           const finalMapping = { ...mapping };
           if (docType === 'resume' && !Object.keys(finalMapping).length) {
             // Heuristic default mapping for standard sections
-            const analysis = docType === 'resume' ? state_templates.resume?.analysis : state_templates.cl?.analysis;
+            const analysis = state_templates.resume?.analysis;
             if (analysis?.headings) {
                analysis.headings.forEach(h => {
-                 const low = h.toLowerCase();
-                 if (low.includes('summary') || low.includes('profile')) finalMapping[h] = 'summary';
-                 if (low.includes('skills')) finalMapping[h] = 'skills';
-                 if (low.includes('experience')) finalMapping[h] = 'workExperience';
-                 if (low.includes('education')) finalMapping[h] = 'education';
+                 const low = h.toLowerCase().trim();
+                 if (low.includes('summary') || low.includes('profile') || low.includes('about')) finalMapping[h] = 'summary';
+                 if (low.includes('skills') || low.includes('competencies') || low.includes('expertise') || low.includes('technical')) finalMapping[h] = 'skills';
+                 if (low.includes('experience') || low.includes('employment') || low.includes('history') || low.includes('work')) finalMapping[h] = 'workExperience';
+                 if (low.includes('education') || low.includes('academic') || low.includes('school')) finalMapping[h] = 'education';
+                 if (low.includes('cert') || low.includes('licens') || low.includes('train')) finalMapping[h] = 'certifications';
                });
             }
-          } else if (docType === 'cover-letter') {
-             // For cover letters, we often just replace one body block or paragraphs
-             // If smart document sees 'paragraphs' in structured draft, it will inject them
+          } else if (docType === 'cover-letter' && !Object.keys(finalMapping).length) {
+             const analysis = state_templates.cl?.analysis;
+             if (analysis?.headings) {
+               analysis.headings.forEach(h => {
+                 const low = h.toLowerCase().trim();
+                 if (low.includes('dear') || low.includes('greeting') || low.includes('to whom')) finalMapping[h] = 'greeting';
+                 if (analysis.headings.length < 3) finalMapping[h] = 'paragraphs';
+               });
+             }
+             if (!Object.keys(finalMapping).length && analysis?.headings?.[0]) {
+               finalMapping[analysis.headings[0]] = 'paragraphs';
+             }
           }
+
+
 
           blob = await generateSmartDocument(ab, finalMapping, draft);
         } else {
@@ -686,6 +787,39 @@ function base64ToArrayBuffer(b64) {
   const bytes  = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
+}
+
+/**
+ * Cleans AI response text and attempts to parse as JSON.
+ * Fixes common AI errors like markdown blocks, trailing commas, or leading/trailing commentary.
+ */
+function tryParseJson(text) {
+  if (!text) return null;
+  
+  let cleaned = text.trim();
+  // Remove markdown blocks
+  cleaned = cleaned.replace(/```json\n?|```/g, '').trim();
+  
+  // Try direct parse first
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    // Attempt basic repairs
+    try {
+      // Remove trailing commas before closing braces/brackets
+      let repaired = cleaned
+        .replace(/,\s*([\}\]])/g, '$1')
+        // Try to find the first '{' and last '}' to strip any surrounding text
+        .match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      
+      if (repaired) {
+        return JSON.parse(repaired[0]);
+      }
+    } catch (e2) {
+      return null;
+    }
+  }
+  return null;
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
