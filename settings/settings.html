@@ -70,6 +70,19 @@
         </div>
 
         <div id="provider-test-area" class="test-area">
+          <div class="field-group" style="margin-bottom: 12px; border-top: 1px solid var(--border); padding-top: 12px;">
+            <label for="sel-simulate-failure" style="color: var(--warning);">🧪 Simulate API Failure (Testing)</label>
+            <select id="sel-simulate-failure" style="border-color: var(--warning); color: var(--warning);">
+              <option value="none">Normal (No failure)</option>
+              <option value="billing">Billing Disabled</option>
+              <option value="unauthorized">Invalid API Key</option>
+              <option value="quota">Quota Exceeded</option>
+              <option value="rate_limit">Rate Limited</option>
+              <option value="network">Network Error</option>
+              <option value="timeout">Request Timeout</option>
+              <option value="unknown">Unknown Error</option>
+            </select>
+          </div>
           <button id="btn-test-provider" class="btn-secondary" type="button">🔌 Test Connection</button>
           <span id="test-result" class="test-result"></span>
         </div>

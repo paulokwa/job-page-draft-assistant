@@ -5,6 +5,7 @@ import { generateResume, generateCoverLetter, reviseDraft, detectSpecialInstruct
 import { loadProfile } from '../modules/profile.js';
 import { fillTemplate, fileToArrayBuffer, downloadBlob, buildFilename, draftToDataMap, validateTemplate } from '../modules/template.js';
 import { generateSmartDocument } from '../modules/templateInterpreter.js';
+import { mapError } from '../modules/errorMapper.js';
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
@@ -19,7 +20,8 @@ const state = {
   docSettings: null,
   profile: null,
   sourceResumeText: '',
-  sourceResumeTemplate: null
+  sourceResumeTemplate: null,
+  lastRunMode: null         // to support Retry
 };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────
@@ -42,6 +44,9 @@ const dom = {
   genStatus:          $('gen-status'),
   genStatusText:      $('gen-status-text'),
   genError:           $('gen-error'),
+  genErrorMessage:    $('gen-error-message'),
+  btnErrorRetry:      $('btn-error-retry'),
+  btnErrorSettings:   $('btn-error-settings'),
   tabBtns:            document.querySelectorAll('.tab-btn'),
   tabPanels:          document.querySelectorAll('.tab-panel'),
   draftResumeEmpty:   $('draft-resume-empty'),
@@ -63,7 +68,6 @@ const dom = {
   btnSaveBoth:        $('btn-save-both'),
   confirmNotice:      $('confirm-notice'),
   filenamePreview:    $('filename-preview'),
-  toast:              $('toast'),
   toast:              $('toast'),
   btnSettings:        $('btn-settings'),
   mockBanner:         $('mock-mode-banner'),
@@ -228,6 +232,14 @@ function bindEvents() {
   dom.btnSaveCL.addEventListener('click',     () => saveDocs(['cover-letter']));
   dom.btnSaveBoth.addEventListener('click',   () => saveDocs(['resume', 'cover-letter']));
 
+  // Error area buttons
+  dom.btnErrorRetry.addEventListener('click', () => {
+    if (state.lastRunMode) runGeneration(state.lastRunMode);
+  });
+  dom.btnErrorSettings.addEventListener('click', () => {
+    dom.settingsView.classList.add('visible');
+  });
+
   // Live sync job fields back to state
   dom.fieldTitle.addEventListener('input',    () => { state.jobData.jobTitle    = dom.fieldTitle.value; });
   dom.fieldCompany.addEventListener('input',  () => { state.jobData.company     = dom.fieldCompany.value; });
@@ -255,6 +267,7 @@ async function runGeneration(mode) {
   state.jobData.company     = dom.fieldCompany.value;
   state.jobData.location    = dom.fieldLocation.value;
   state.jobData.description = dom.fieldDesc.value;
+  state.lastRunMode = mode;
 
   setGenerating(true);
   resetConfirm();
@@ -298,7 +311,7 @@ async function runGeneration(mode) {
     extractInstructionsWithAI();
     showToast('✅ Draft generated successfully!');
   } catch (e) {
-    showError(e.message || 'Generation failed. Please check your Settings.');
+    showError(e);
   } finally {
     setGenerating(false);
   }
@@ -460,9 +473,11 @@ async function applyRevision() {
     dom.whatChangedText.textContent = `Applied: "${request}"`;
     dom.whatChanged.classList.remove('hidden');
     dom.fieldRevision.value = '';
+    dom.fieldRevision.value = '';
     showToast('✅ Draft revised!');
   } catch (e) {
-    showToast(`❌ Revision failed: ${e.message}`);
+    showError(e);
+    // Revision errors also show the error panel, but don't clear the draft area
   } finally {
     setRevising(false);
   }
@@ -608,9 +623,19 @@ function enableRevisionButtons(on) {
   dom.btnConfirm.disabled      = !on;
 }
 
-function showError(msg) {
-  dom.genError.textContent = `⚠️ ${msg}`;
+function showError(err) {
+  const { message, action } = mapError(err);
+  dom.genErrorMessage.textContent = `⚠️ ${message}`;
+  
+  // Show/hide relevant buttons based on recommended action
+  dom.btnErrorRetry.classList.toggle('hidden', action !== 'retry');
+  dom.btnErrorSettings.classList.toggle('hidden', action !== 'settings');
+  
   dom.genError.classList.remove('hidden');
+  
+  // Also clear generating state just in case
+  setGenerating(false);
+  setRevising(false);
 }
 function hideError() { dom.genError.classList.add('hidden'); }
 

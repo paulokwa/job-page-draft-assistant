@@ -4,6 +4,7 @@ import { loadProfile, saveProfile, DEFAULT_PROFILE } from '../modules/profile.js
 import { callAI } from '../modules/provider.js';
 import { validateTemplate, fileToArrayBuffer } from '../modules/template.js';
 import { analyzeTemplate, extractTextFromDocx } from '../modules/templateInterpreter.js';
+import { mapError } from '../modules/errorMapper.js';
 
 // ── State ─────────────────────────────────────────────────────────────────
 let profile = null;
@@ -104,6 +105,7 @@ function populateProviderSection(s) {
   if (s.provider)  $('sel-provider').value  = s.provider;
   if (s.apiKey)    $('inp-apikey').value     = s.apiKey;
   if (s.endpoint)  $('inp-endpoint').value   = s.endpoint;
+  if (s.simulateFailure) $('sel-simulate-failure').value = s.simulateFailure;
   updateProviderVisibility(false);
 }
 
@@ -173,6 +175,7 @@ async function saveProvider() {
     apiKey,
     modelName: finalModel,
     endpoint:  $('inp-endpoint').value.trim(),
+    simulateFailure: $('sel-simulate-failure').value,
     // carry over template names
     resumeTemplateName:      settings.resumeTemplateName      || null,
     coverLetterTemplateName: settings.coverLetterTemplateName || null,
@@ -227,7 +230,8 @@ async function testConnection() {
       throw new Error('Empty response');
     }
   } catch (e) {
-    result.textContent = `❌ Failed: ${e.message}`;
+    const { message } = mapError(e);
+    result.textContent = `❌ Failed: ${message}`;
     result.className = 'test-result test-fail';
   }
 }
@@ -442,7 +446,8 @@ async function handleSourceResumeUpload(event) {
         setTimeout(() => showToast(`✨ Profile fields auto-filled! Please review and click "Save Profile" at the bottom.`), 3500);
       } catch (aiError) {
         console.error("AI Profile Extraction failed:", aiError);
-        setTimeout(() => showToast(`⚠️ Resume uploaded, but AI profile extraction failed: ${aiError.message}`), 3500);
+        const { message } = mapError(aiError);
+        setTimeout(() => showToast(`⚠️ Resume uploaded, but AI profile extraction failed: ${message}`), 3500);
       }
     }
 

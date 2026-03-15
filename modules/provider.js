@@ -12,7 +12,22 @@
  * @returns {Promise<string>} - The AI response text
  */
 export async function callAI(systemPrompt, userPrompt, settings) {
-  const { provider, apiKey, modelName, endpoint } = settings;
+  const { provider, apiKey, modelName, endpoint, simulateFailure } = settings;
+
+  // ── Failure Simulation for Testing ──
+  if (simulateFailure && simulateFailure !== 'none') {
+    // Artificial delay to make it feel real
+    await new Promise(r => setTimeout(r, 600));
+    switch (simulateFailure) {
+      case 'billing':      throw new Error('Quota exceeded: Billing is disabled on this project.');
+      case 'unauthorized': throw new Error('Invalid API key: Unauthorized access.');
+      case 'quota':        throw new Error('User rate limit exceeded: Quota fully consumed.');
+      case 'rate_limit':   throw new Error('Too many requests: Rate limit hit (429).');
+      case 'network':      throw new Error('Failed to fetch: Network is unreachable.');
+      case 'timeout':      throw new Error('The request timed out after 30 seconds.');
+      default:             throw new Error('An unknown server error occurred.');
+    }
+  }
 
   switch (provider) {
     case 'mock':     return callMock(systemPrompt, userPrompt, settings);
@@ -27,9 +42,7 @@ export async function callAI(systemPrompt, userPrompt, settings) {
 // ── Mock (local, no API) ──────────────────────────────────────────────────
 
 async function callMock(systemPrompt, userPrompt, settings) {
-  // Mock routing is handled higher up in drafting.js via isMock().
-  // This fallback handles any direct callAI() calls (e.g. test connection,
-  // detectSpecialInstructionsAI) that happen to reach here in mock mode.
+  // If simulateFailure was 'none' or null, we proceed to mock response.
   return '[Mock Mode] Simulated AI response. No real API was called.';
 }
 

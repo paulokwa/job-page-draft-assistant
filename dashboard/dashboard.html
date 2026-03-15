@@ -110,7 +110,13 @@
           <div class="spinner"></div>
           <span id="gen-status-text">Generating…</span>
         </div>
-        <div id="gen-error" class="gen-error hidden"></div>
+        <div id="gen-error" class="gen-error hidden">
+          <div id="gen-error-message"></div>
+          <div class="error-actions">
+            <button id="btn-error-retry" class="btn-secondary btn-sm">↻ Retry</button>
+            <button id="btn-error-settings" class="btn-secondary btn-sm">⚙ Settings</button>
+          </div>
+        </div>
         <div id="risk-warning" class="risk-warning hidden">
           <div class="risk-icon">⚠️</div>
           <div class="risk-details">
