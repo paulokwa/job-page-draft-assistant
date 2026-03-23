@@ -58,7 +58,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     try {
       response = await chrome.tabs.sendMessage(tab.id, { type: 'CAPTURE_CONTENT' });
     } catch (e) {
-      // Content script may not be injected yet — inject and retry
+      // Content script may not be injected yet
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tab.id, allFrames: true },

@@ -82,34 +82,65 @@
         <div id="selection-notice" class="selection-notice hidden">
           ✅ Using your highlighted text as the job description.
         </div>
-        <textarea id="field-job-desc" rows="10" placeholder="Paste or edit the job description here…"></textarea>
+        <textarea id="field-job-desc" rows="8" placeholder="Paste or edit the job description here…"></textarea>
       </section>
 
-      <!-- Application Instructions Card -->
-      <section class="card" id="card-instructions">
+      <!-- Template Selection Card -->
+      <section class="card" id="card-template">
         <div class="card-header">
-          <span class="card-title">⚠️ Application Instructions Detected</span>
+          <span class="card-title">🎨 Style & Template</span>
         </div>
-        <div id="instructions-content">
-          <p class="muted">No special instructions detected yet.<br />Click <strong>Extract Instructions</strong> or generate a draft to scan.</p>
+        <div class="template-grid">
+          <div class="template-option active" data-template="classic">
+            <div class="template-thumb classic"></div>
+            <span>Classic</span>
+          </div>
+          <div class="template-option" data-template="modern">
+            <div class="template-thumb modern"></div>
+            <span>Modern</span>
+          </div>
+          <div class="template-option" data-template="sidebar">
+            <div class="template-thumb sidebar"></div>
+            <span>Sidebar</span>
+          </div>
+          <div class="template-option" data-template="compact">
+            <div class="template-thumb compact"></div>
+            <span>Compact</span>
+          </div>
         </div>
-        <button id="btn-extract-instructions" class="btn-secondary btn-sm">🔍 Extract Instructions</button>
+        
+        <div class="customization-controls">
+          <div class="control-group">
+            <label>Accent</label>
+            <div class="color-presets">
+              <button class="color-dot active" style="background: #2563eb" data-color="#2563eb"></button>
+              <button class="color-dot" style="background: #059669" data-color="#059669"></button>
+              <button class="color-dot" style="background: #dc2626" data-color="#dc2626"></button>
+              <button class="color-dot" style="background: #7c3aed" data-color="#7c3aed"></button>
+              <button class="color-dot" style="background: #0f172a" data-color="#0f172a"></button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>Spacing</label>
+            <select id="select-spacing">
+              <option value="standard">Standard</option>
+              <option value="compact">Compact</option>
+            </select>
+          </div>
+        </div>
       </section>
 
       <!-- Generate Controls Card -->
       <section class="card" id="card-generate">
         <div class="card-header">
-          <span class="card-title">⚡ Generate</span>
+          <span class="card-title">⚡ Actions</span>
         </div>
-        <div class="generate-buttons" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <button id="btn-gen-resume"       class="btn-primary">Generate Resume</button>
-          <button id="btn-gen-resume-ai"    class="btn-secondary">Generate HTML Resume</button>
-          
-          <button id="btn-gen-cover-letter" class="btn-primary">Generate Cover Letter</button>
-          <button id="btn-gen-cl-ai"        class="btn-secondary">Generate HTML CV</button>
-          
-          <button id="btn-gen-both"         class="btn-primary btn-accent" style="grid-column: span 1;">Generate Both</button>
-          <button id="btn-gen-both-ai"      class="btn-secondary btn-accent" style="grid-column: span 1;">Generate Both (HTML)</button>
+        <div class="generate-buttons">
+          <button id="btn-gen-both" class="btn-primary btn-lg">Generate Resume + CV</button>
+          <div class="btn-group-row">
+            <button id="btn-gen-resume" class="btn-secondary">Resume Only</button>
+            <button id="btn-gen-cover-letter" class="btn-secondary">Cover Letter Only</button>
+          </div>
         </div>
         <div id="gen-status" class="gen-status hidden">
           <div class="spinner"></div>
@@ -122,13 +153,6 @@
             <button id="btn-error-settings" class="btn-secondary btn-sm">⚙ Settings</button>
           </div>
         </div>
-        <div id="risk-warning" class="risk-warning hidden">
-          <div class="risk-icon">⚠️</div>
-          <div class="risk-details">
-            <strong id="risk-level">High Risk</strong>
-            <p id="risk-message">Heavily custom layout detected.</p>
-          </div>
-        </div>
       </section>
 
     </div><!-- /left-col -->
@@ -139,30 +163,30 @@
       <!-- Draft Tabs Card -->
       <section class="card" id="card-drafts">
         <div class="card-header">
-          <span class="card-title">📄 Drafts</span>
+          <span class="card-title">📄 Preview</span>
           <div class="tab-bar">
             <button class="tab-btn active" data-tab="resume">Resume</button>
             <button class="tab-btn" data-tab="cover-letter">Cover Letter</button>
           </div>
         </div>
 
-        <div id="tab-resume" class="tab-panel active">
+        <div id="tab-resume" class="tab-panel">
           <div id="draft-resume-empty" class="draft-empty">
             <div class="draft-empty-icon">📋</div>
-            <p>Your resume draft will appear here after you click <strong>Generate</strong>.</p>
+            <p>Your resume preview will appear here.</p>
           </div>
-          <div id="draft-resume-content" class="draft-content hidden">
-            <pre id="draft-resume-text"></pre>
+          <div id="draft-resume-content" class="draft-preview-wrapper hidden">
+            <iframe id="preview-resume-frame" class="preview-frame"></iframe>
           </div>
         </div>
 
-        <div id="tab-cover-letter" class="tab-panel hidden">
+        <div id="tab-cover-letter" class="tab-panel">
           <div id="draft-cl-empty" class="draft-empty">
             <div class="draft-empty-icon">✉️</div>
-            <p>Your cover letter draft will appear here after you click <strong>Generate</strong>.</p>
+            <p>Your cover letter preview will appear here.</p>
           </div>
-          <div id="draft-cl-content" class="draft-content hidden">
-            <pre id="draft-cl-text"></pre>
+          <div id="draft-cl-content" class="draft-preview-wrapper hidden">
+            <iframe id="preview-cl-frame" class="preview-frame"></iframe>
           </div>
         </div>
       </section>
@@ -170,42 +194,30 @@
       <!-- Revision Box Card -->
       <section class="card" id="card-revision">
         <div class="card-header">
-          <span class="card-title">💬 Request Changes</span>
-          <span class="card-hint">Revises the currently visible draft</span>
+          <span class="card-title">💬 Refine Content</span>
         </div>
         <textarea
           id="field-revision"
-          rows="3"
-          placeholder="e.g. make the tone more formal… emphasize healthcare support… shorten the summary…"
+          rows="2"
+          placeholder="e.g. emphasize my leadership experience... make the tone more enthusiastic..."
         ></textarea>
         <div class="revision-buttons">
           <button id="btn-apply-changes"  class="btn-primary" disabled>Apply Changes</button>
-          <button id="btn-regenerate"     class="btn-secondary" disabled>↺ Regenerate from Original</button>
-        </div>
-        <div id="revision-status" class="gen-status hidden">
-          <div class="spinner"></div>
-          <span id="revision-status-text">Revising…</span>
-        </div>
-        <div id="what-changed" class="what-changed hidden">
-          <strong>What changed:</strong>
-          <span id="what-changed-text"></span>
+          <button id="btn-regenerate"     class="btn-secondary" disabled>↺ Reset</button>
         </div>
       </section>
 
-      <!-- Confirm & Save Card -->
+      <!-- Export Card -->
       <section class="card" id="card-save">
         <div class="card-header">
-          <span class="card-title">✅ Confirm & Save</span>
+          <span class="card-title">💾 Export</span>
         </div>
-        <div id="confirm-notice" class="confirm-notice">
-          Review your draft, then confirm before saving.
-        </div>
-        <div id="filename-preview" class="filename-preview hidden"></div>
         <div class="save-buttons">
-          <button id="btn-confirm"        class="btn-confirm" disabled>Confirm Draft</button>
-          <button id="btn-save-resume"    class="btn-save" disabled>💾 Save Resume</button>
-          <button id="btn-save-cl"        class="btn-save" disabled>💾 Save Cover Letter</button>
-          <button id="btn-save-both"      class="btn-save" disabled>💾 Save Both</button>
+          <button id="btn-save-pdf" class="btn-confirm btn-lg" disabled>Download PDF (Recommended)</button>
+          <div class="btn-group-row">
+            <button id="btn-save-resume"    class="btn-secondary" disabled>Resume PDF</button>
+            <button id="btn-save-cl"        class="btn-secondary" disabled>Cover Letter PDF</button>
+          </div>
         </div>
       </section>
 
@@ -213,12 +225,8 @@
 
   </main><!-- /app-main -->
 
-  <!-- ═══════════════════════════════════════════════════
-       TOAST NOTIFICATION
-  ═══════════════════════════════════════════════════ -->
   <div id="toast" class="toast hidden"></div>
 
-  <!-- SCRIPTS — lib globals are loaded lazily by dashboard.js when needed -->
   <script type="module" src="dashboard.js"></script>
 
 </body>

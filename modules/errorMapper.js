@@ -10,6 +10,7 @@ export const ErrorType = {
   RATE_LIMIT: 'rate_limit',
   NETWORK: 'network',
   TIMEOUT: 'timeout',
+  MODEL_NOT_FOUND: 'model_not_found',
   UNKNOWN: 'unknown'
 };
 
@@ -20,6 +21,22 @@ export const ErrorType = {
  */
 export function mapError(error) {
   const msg = (error?.message || String(error)).toLowerCase();
+
+  // 0. Manual Input Validation (Proactive Instructions)
+  if (msg === 'no_job_desc') {
+    return {
+      type: 'validation',
+      message: 'The Job Description is empty. To proceed, you can copy and paste the job text here, or right-click on the job posting and select "Job Page Draft Assistant → Create Both" to capture it automatically.',
+      action: 'none'
+    };
+  }
+  if (msg === 'no_profile') {
+    return {
+      type: 'validation',
+      message: 'Your profile is missing. Please go to Settings → My Profile and add your professional details (or upload your resume for auto-fill) before generating.',
+      action: 'settings'
+    };
+  }
   
   // 1. Billing / Payment
   if (msg.includes('billing') || msg.includes('payment')) {
@@ -57,11 +74,14 @@ export function mapError(error) {
     };
   }
 
-  // 5. Network / Reachability
-  if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch') || msg.includes('cannot reach')) {
+  // 5. Network / Reachability / Blocking
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch') || msg.includes('cannot reach') || msg.includes('blocked')) {
+    const isBlocked = msg.includes('blocked');
     return {
       type: ErrorType.NETWORK,
-      message: 'The app could not reach the AI service. Please check your internet connection and try again.',
+      message: isBlocked 
+        ? 'The request was blocked by the browser. This is often caused by ad-blockers or security extensions. Please try disabling them for the extension.' 
+        : 'The app could not reach the AI service. Please check your internet connection and try again.',
       action: 'retry'
     };
   }
@@ -75,10 +95,20 @@ export function mapError(error) {
     };
   }
 
-  // 7. Unknown / Fallback
+  // 7. Model Not Found (404)
+  if (msg.includes('404') || msg.includes('model') && (msg.includes('not found') || msg.includes('invalid'))) {
+    return {
+      type: ErrorType.MODEL_NOT_FOUND,
+      message: error?.message || 'The selected AI model was not found or is invalid. Please check your model settings.',
+      action: 'settings'
+    };
+  }
+
+  // 8. Unknown / Fallback
+  const friendlyMsg = error?.message ? `Something went wrong: ${error.message}` : 'Something went wrong while contacting the AI service.';
   return {
     type: ErrorType.UNKNOWN,
-    message: 'Something went wrong while contacting the AI service.',
+    message: friendlyMsg,
     action: 'retry'
   };
 }

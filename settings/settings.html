@@ -24,7 +24,6 @@
     <nav class="settings-nav">
       <button class="nav-btn active" data-section="provider">⚙ AI Provider</button>
       <button class="nav-btn" data-section="documents">📄 Documents</button>
-      <button class="nav-btn" data-section="templates">📁 Templates</button>
       <button class="nav-btn" data-section="profile">👤 My Profile</button>
     </nav>
 
@@ -127,130 +126,6 @@
       <button class="btn-save-section" id="btn-save-documents">Save Document Settings</button>
     </section>
 
-    <!-- ══════════════════════════════════════════
-         SECTION: TEMPLATES
-    ══════════════════════════════════════════ -->
-    <section id="section-templates" class="settings-section">
-      <h2 class="section-title">Word Templates</h2>
-      <p class="section-desc" id="template-desc-smart">
-        Upload your own normal <strong>.docx</strong> templates. The system will auto-detect your headings 
-        (like SUMMARY, EXPERIENCE) and inject generated content underneath them while preserving your design.
-      </p>
-      <p class="section-desc hidden" id="template-desc-placeholders">
-        Upload your own <strong>.docx</strong> templates with placeholders like
-        <code>{{FULL_NAME}}</code> and <code>{{COVER_LETTER_BODY}}</code>.
-      </p>
-
-      <div class="card" style="margin-bottom: 24px;">
-        <div class="field-group">
-          <label>Template Processing Mode</label>
-          <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
-            <label style="display: flex; gap: 8px; cursor: pointer; align-items: flex-start;">
-              <input type="radio" name="templateMode" value="smart" style="margin-top: 4px;" checked>
-              <div>
-                <strong>Smart Import (Default)</strong>
-                <div class="field-hint" style="margin-top: 2px;">No editing needed. Automatically maps generated text to your existing headings.</div>
-              </div>
-            </label>
-            <label style="display: flex; gap: 8px; cursor: pointer; align-items: flex-start;">
-              <input type="radio" name="templateMode" value="placeholders" style="margin-top: 4px;">
-              <div>
-                <strong>Placeholder Tags (Advanced)</strong>
-                <div class="field-hint" style="margin-top: 2px;">Classic mode. You must manually add `{{TAGS}}` throughout your Word document.</div>
-              </div>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <!-- Source Resume -->
-      <div class="card template-card" style="border-top: 4px solid var(--accent); margin-bottom: 24px;">
-        <div class="template-header">
-          <div>
-            <strong>Source Resume (Your Factual Background)</strong>
-            <p class="field-hint">Upload your actual resume here. The AI reads this to know your real experience, skills, and education.</p>
-            <p class="field-hint" style="color: var(--accent); margin-top: 4px;">✨ <strong>New:</strong> Uploading will automatically try to auto-fill your Profile below!</p>
-          </div>
-          <span id="source-resume-badge" class="template-badge hidden">✅ Uploaded</span>
-        </div>
-        <div class="upload-area" id="upload-source-area">
-          <input type="file" id="inp-source-resume" accept=".docx" class="file-input" />
-          <label for="inp-source-resume" class="upload-label">
-            <span class="upload-icon">🎓</span>
-            <span id="source-upload-text">Click to upload your Source Resume (.docx)</span>
-          </label>
-        </div>
-        <div id="source-resume-active-bar" class="active-template-bar hidden"></div>
-      </div>
-
-      <!-- Resume template -->
-      <div class="card template-card">
-        <div class="template-header">
-          <div>
-            <strong>Resume Template</strong>
-            <p class="field-hint" id="resume-hint-smart">Upload a typical resume DOCX with standard headings.</p>
-            <p class="field-hint hidden" id="resume-hint-placeholders">Should contain placeholders like <code>{{SUMMARY}}</code>, <code>{{EXPERIENCE_1_TITLE}}</code>, etc.</p>
-          </div>
-          <span id="resume-template-badge" class="template-badge hidden">✅ Uploaded</span>
-        </div>
-        <div class="upload-area" id="upload-resume-area">
-          <input type="file" id="inp-resume-template" accept=".docx" class="file-input" />
-          <label for="inp-resume-template" class="upload-label">
-            <span class="upload-icon">📄</span>
-            <span id="resume-upload-text">Click to upload resume template (.docx)</span>
-          </label>
-        </div>
-        <div id="resume-active-bar" class="active-template-bar hidden"></div>
-        <div id="resume-placeholders" class="placeholder-list hidden"></div>
-        <div id="resume-mapping-ui" class="mapping-ui hidden" style="margin-top: 16px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;"></div>
-      </div>
-
-      <!-- Cover letter template -->
-      <div class="card template-card">
-        <div class="template-header">
-          <div>
-            <strong>Cover Letter Template</strong>
-            <p class="field-hint" id="cl-hint-smart">Upload a typical cover letter DOCX.</p>
-            <p class="field-hint hidden" id="cl-hint-placeholders">Should contain <code>{{COVER_LETTER_BODY}}</code> at minimum.</p>
-          </div>
-          <span id="cl-template-badge" class="template-badge hidden">✅ Uploaded</span>
-        </div>
-        <div class="upload-area" id="upload-cl-area">
-          <input type="file" id="inp-cl-template" accept=".docx" class="file-input" />
-          <label for="inp-cl-template" class="upload-label">
-            <span class="upload-icon">✉️</span>
-            <span id="cl-upload-text">Click to upload cover letter template (.docx)</span>
-          </label>
-        </div>
-        <div id="cl-active-bar" class="active-template-bar hidden"></div>
-        <div id="cl-placeholders" class="placeholder-list hidden"></div>
-        <div id="cl-mapping-ui" class="mapping-ui hidden" style="margin-top: 16px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;"></div>
-      </div>
-
-      <!-- Placeholder reference -->
-      <div class="card placeholder-ref hidden" id="placeholder-ref-card">
-        <h3 class="ref-title">📖 Placeholder Reference</h3>
-        <div class="ref-grid">
-          <div>
-            <strong>General</strong>
-            <code>{{FULL_NAME}}</code><code>{{EMAIL}}</code><code>{{PHONE}}</code>
-            <code>{{LINKEDIN}}</code><code>{{PORTFOLIO}}</code>
-          </div>
-          <div>
-            <strong>Resume Sections</strong>
-            <code>{{SUMMARY}}</code><code>{{SKILLS}}</code><code>{{RESUME_BODY}}</code>
-            <code>{{EXPERIENCE_1_TITLE}}</code><code>{{EXPERIENCE_1_COMPANY}}</code>
-            <code>{{EXPERIENCE_1_DATES}}</code><code>{{EXPERIENCE_1_BULLETS}}</code>
-          </div>
-          <div>
-            <strong>Cover Letter</strong>
-            <code>{{DATE}}</code><code>{{HIRING_MANAGER}}</code>
-            <code>{{COMPANY_NAME}}</code><code>{{JOB_TITLE}}</code>
-            <code>{{COVER_LETTER_BODY}}</code>
-          </div>
-        </div>
-      </div>
-    </section>
 
     <!-- ══════════════════════════════════════════
          SECTION: PROFILE
@@ -258,6 +133,22 @@
     <section id="section-profile" class="settings-section">
       <h2 class="section-title">My Profile</h2>
       <p class="section-desc">The AI uses this data to generate tailored drafts. Fill in as much as possible.</p>
+
+      <!-- Source Resume / Auto-fill -->
+      <div class="card" style="border-top: 4px solid var(--accent); margin-bottom: 24px;">
+        <h3 class="card-sub-title">🎓 Source Resume & Auto-fill</h3>
+        <p class="field-hint">Upload your actual resume (.docx or .pdf). The AI reads this to know your professional background and will auto-populate the fields below.</p>
+        
+        <div class="upload-area" style="margin-top: 12px;">
+          <input type="file" id="inp-source-resume" accept=".docx,.pdf" class="file-input" />
+          <label for="inp-source-resume" class="upload-label">
+            <span class="upload-icon">📄</span>
+            <span id="source-upload-text">Click to upload your Source Resume (.docx or .pdf)</span>
+          </label>
+        </div>
+        <div id="source-resume-active-bar" class="active-template-bar hidden" style="margin-top: 8px;"></div>
+        <div id="profile-autofill-status" class="hidden" style="margin-top: 12px; padding: 10px; background: var(--bg); border-radius: 6px; font-size: 13px; color: var(--muted); border: 1px dashed var(--border);"></div>
+      </div>
 
       <!-- Personal Details -->
       <div class="card">

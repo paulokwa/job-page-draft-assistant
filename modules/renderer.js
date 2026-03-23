@@ -1,0 +1,101 @@
+// modules/renderer.js
+// Central rendering engine for HTML templates.
+
+import * as classic from '../templates/classic.js';
+import * as modern from '../templates/modern.js';
+import * as sidebar from '../templates/sidebar.js';
+import * as compact from '../templates/compact.js';
+
+const templates = {
+  classic,
+  modern,
+  sidebar,
+  compact
+};
+
+/**
+ * Renders a full HTML document for a resume or cover letter.
+ * @param {string} templateId - 'classic' | 'modern' | 'sidebar' | 'compact'
+ * @param {string} type - 'resume' | 'cover-letter'
+ * @param {ResumeContent} data - Structured data
+ * @param {Object} options - { accentColor, spacingMode }
+ */
+export function renderDocument(templateId, type, data, options = {}) {
+  const template = templates[templateId] || templates.classic;
+  const accentColor = options.accentColor || data.metadata?.accentColor || '#2563eb';
+  const spacingMode = options.spacingMode || data.metadata?.spacingMode || 'standard';
+
+  const contentHtml = type === 'resume' 
+    ? template.render(data) 
+    : template.renderCoverLetter(data);
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="light">
+      <title>${type === 'resume' ? 'Resume' : 'Cover Letter'} - ${data.personalInfo.fullName}</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          --accent-color: ${accentColor};
+          --spacing-factor: ${spacingMode === 'compact' ? '0.8' : '1.0'};
+        }
+        body {
+          margin: 0;
+          padding: 0;
+          background: #f0f2f5;
+          display: flex;
+          justify-content: center;
+          -webkit-print-color-adjust: exact;
+        }
+        * {
+          box-sizing: border-box;
+        }
+        
+        .page-preview {
+          background: white;
+          width: 8.5in;
+          min-height: 11in;
+          padding: 0.5in;
+          box-shadow: 0 0 10px rgba(0,0,0,0.1);
+          margin: 20px;
+          overflow: hidden;
+        }
+
+        ${template.styles}
+
+        ${spacingMode === 'compact' ? `
+          .resume-container { font-size: 0.9em; }
+          .section { margin-bottom: 8pt; }
+          .item { margin-bottom: 6pt; }
+          .bullets li { margin-bottom: 1pt; }
+        ` : ''}
+
+        @media print {
+          body { background: white; }
+          .page-preview {
+            margin: 0;
+            box-shadow: none;
+            width: 100%;
+            min-height: auto;
+            padding: 0;
+          }
+          @page {
+            margin: 0.5in;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="page-preview">
+        ${contentHtml}
+      </div>
+    </body>
+    </html>
+  `;
+}

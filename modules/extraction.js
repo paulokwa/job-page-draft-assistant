@@ -1,5 +1,6 @@
 // modules/extraction.js
 // Parses raw job page text to extract structured job fields and detect special instructions.
+// Also handles DOCX text extraction for profile auto-fill.
 
 /**
  * Attempts to extract structured job fields from raw text.
@@ -223,4 +224,44 @@ Schema:
     console.error('Failed to parse AI resume extraction JSON:', e, responseText);
     throw new Error('AI returned invalid profile data layout.');
   }
+}
+
+/**
+ * Extracts raw text from a DOCX file buffer.
+ * Simple implementation for profile auto-fill.
+ */
+export async function extractTextFromDocx(arrayBuffer) {
+  // We use PizZip from the global scope if available (loaded in settings/dashboard)
+  const PizZipLib = (typeof PizZip !== 'undefined') ? PizZip : window.PizZip;
+  if (!PizZipLib) {
+    // Fallback: load it dynamically if we are in an environment that allows it
+    // But usually it's pre-loaded in HTML.
+    throw new Error('PizZip library not found. Ensure lib/pizzip.js is loaded.');
+  }
+
+  const zip = new PizZipLib(arrayBuffer);
+  const docXml = zip.file('word/document.xml').asText();
+  
+  // Very simplistic XML to Text: strip all tags
+  // For better results we could look for <w:t> specifically
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(docXml, "text/xml");
+  const texts = xmlDoc.getElementsByTagName("w:t");
+  let out = "";
+  for (let i = 0; i < texts.length; i++) {
+    out += texts[i].textContent + " ";
+  }
+  return out.trim();
+}
+
+/**
+ * Reads an ArrayBuffer from a File object.
+ */
+export function fileToArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.readAsArrayBuffer(file);
+  });
 }
