@@ -68,9 +68,10 @@ const dom = {
   btnApplyChanges:    $('btn-apply-changes'),
   btnRegenerate:      $('btn-regenerate'),
   
-  btnSavePdf:         document.getElementById('btn-save-pdf'),
+  btnSavePdf:         $('btn-save-pdf'),
   btnSaveResume:      $('btn-save-resume'),
   btnSaveCL:          $('btn-save-cl'),
+  btnPrint:           $('btn-print'),
   
   toast:              $('toast'),
   btnSettings:        $('btn-settings'),
@@ -206,6 +207,7 @@ function bindEvents() {
   dom.btnSavePdf.addEventListener('click', () => savePdf(['resume', 'cover-letter']));
   dom.btnSaveResume.addEventListener('click', () => savePdf(['resume']));
   dom.btnSaveCL.addEventListener('click', () => savePdf(['cover-letter']));
+  dom.btnPrint.addEventListener('click', () => printDraft());
 
   // Error Retry
   dom.btnErrorRetry.addEventListener('click', () => {
@@ -332,7 +334,11 @@ async function savePdf(types) {
       const draft = state.drafts[type];
       if (!draft || !frame) continue;
 
-      const element = frame.contentDocument.querySelector('.page-preview');
+      // Ensure fonts are loaded in the iframe
+      await frame.contentWindow.document.fonts.ready;
+
+      // Use documentElement instead of body to capture styles in <head>
+      const element = frame.contentDocument.documentElement;
       const typeLabel = type === 'resume' ? 'Resume' : 'Cover Letter';
       const filename = buildFilename('{docType} - {company} - {jobTitle}.pdf', { ...state.jobData, docType: typeLabel });
 
@@ -340,8 +346,13 @@ async function savePdf(types) {
         margin: 0,
         filename: filename,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        html2canvas: { 
+          scale: 2, 
+          useCORS: true,
+          letterRendering: true, // Better for text quality
+          logging: false
+        },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait', compress: true }
       };
 
       await html2pdf().set(opt).from(element).save();
@@ -349,8 +360,17 @@ async function savePdf(types) {
     }
   } catch (e) {
     console.error('PDF Export Error:', e);
-    showToast('❌ PDF export failed. Try printing the page manually.');
+    showToast('❌ PDF export failed. Try using the Print button.');
   }
+}
+
+function printDraft() {
+  const frame = state.currentTab === 'resume' ? dom.previewResumeFrame : dom.previewCLFrame;
+  if (!frame) return;
+  
+  // Focus and Print
+  frame.contentWindow.focus();
+  frame.contentWindow.print();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -401,6 +421,7 @@ function enableExportControls(on) {
   dom.btnSavePdf.disabled = !on;
   dom.btnSaveResume.disabled = !on;
   dom.btnSaveCL.disabled = !on;
+  dom.btnPrint.disabled = !on;
 }
 
 let toastTimer;

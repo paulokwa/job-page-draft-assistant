@@ -54,6 +54,7 @@ export function renderDocument(templateId, type, data, options = {}) {
           display: flex;
           justify-content: center;
           -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
         * {
           box-sizing: border-box;
@@ -67,6 +68,7 @@ export function renderDocument(templateId, type, data, options = {}) {
           box-shadow: 0 0 10px rgba(0,0,0,0.1);
           margin: 20px;
           overflow: hidden;
+          position: relative;
         }
 
         ${template.styles}
@@ -79,16 +81,23 @@ export function renderDocument(templateId, type, data, options = {}) {
         ` : ''}
 
         @media print {
-          body { background: white; }
+          body { 
+            background: white !important; 
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+          }
           .page-preview {
-            margin: 0;
-            box-shadow: none;
-            width: 100%;
-            min-height: auto;
-            padding: 0;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            width: 100% !important;
+            min-height: 0 !important;
+            background: white !important;
           }
           @page {
             margin: 0.5in;
+            size: letter;
           }
         }
       </style>

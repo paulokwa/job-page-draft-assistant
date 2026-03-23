@@ -32,7 +32,7 @@ export async function callAI(systemPrompt, userPrompt, settings) {
   switch (provider) {
     case 'mock':     return callMock(systemPrompt, userPrompt, settings);
     case 'openai':   return callOpenAI(systemPrompt, userPrompt, apiKey, modelName || 'gpt-4o-mini');
-    case 'gemini':   return callGemini(systemPrompt, userPrompt, apiKey, modelName || 'gemini-2.5-flash');
+    case 'gemini':   return callGemini(systemPrompt, userPrompt, apiKey, modelName || 'gemini-1.5-flash');
     case 'ollama':   return callOllama(systemPrompt, userPrompt, endpoint || 'http://localhost:11434', modelName || 'llama3');
     default:
       throw new Error(`Unknown AI provider: "${provider}". Please check your settings.`);

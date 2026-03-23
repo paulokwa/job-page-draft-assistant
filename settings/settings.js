@@ -13,14 +13,14 @@ let docSettings = {};
 const PROVIDER_MODELS = {
   mock: ['mock-basic'],
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  gemini: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-pro', 'gemini-1.5-pro'],
+  gemini: ['gemini-2.5-flash', 'gemini-2.0-flash-001', 'gemini-1.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.5-pro', 'gemini-2.0-pro', 'gemini-1.5-pro'],
   ollama: ['llama3', 'mistral', 'gemma', 'phi3']
 };
 
 const DEFAULT_MODELS = {
   mock: 'mock-basic',
   openai: 'gpt-4o-mini',
-  gemini: 'gemini-2.0-flash',
+  gemini: 'gemini-2.0-flash-001',
   ollama: 'llama3'
 };
 
@@ -136,8 +136,18 @@ async function testConnection() {
     return;
   }
   result.textContent = '⏳ Testing…';
+
+  // Use current form values for testing, not just saved ones
+  const modelVal = $('sel-model').value;
+  const testSettings = {
+    provider,
+    apiKey: $('inp-apikey').value.trim(),
+    modelName: modelVal === 'custom' ? $('inp-custom-model').value.trim() : modelVal,
+    endpoint:  $('inp-endpoint').value.trim()
+  };
+
   try {
-    const response = await callAI('You are a test assistant.', 'Reply with: "Connected"', settings);
+    const response = await callAI('You are a test assistant.', 'Reply with: "Connected"', testSettings);
     result.textContent = response ? '✅ Connected!' : '❌ Empty response';
   } catch (e) {
     result.textContent = `❌ Failed: ${mapError(e).message}`;
