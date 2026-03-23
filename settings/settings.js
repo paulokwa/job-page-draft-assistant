@@ -71,6 +71,7 @@ async function init() {
   $('btn-add-exp').addEventListener('click',  () => addExperienceEntry());
   $('btn-add-edu').addEventListener('click',  () => addEducationEntry());
   $('btn-add-cert').addEventListener('click', () => addCertEntry());
+  $('btn-add-summary').addEventListener('click', () => addSummaryEntry());
 
   updateFilenamePreview();
 }
@@ -307,14 +308,20 @@ function populateProfile(p) {
 function renderSummaries(summaries) {
   const container = $('summaries-list');
   container.innerHTML = '';
-  summaries.forEach((s, i) => {
-    const row = document.createElement('div');
-    row.innerHTML = `<input type="text" value="${escHtml(s.label)}" class="summary-label-input" style="width:120px" /> 
-                     <textarea class="summary-text-input" rows="2" style="flex:1">${escHtml(s.text)}</textarea> 
-                     <button onclick="this.parentElement.remove()">✕</button>`;
-    row.style.display = 'flex'; row.style.gap = '8px'; row.style.marginBottom = '8px';
-    container.appendChild(row);
-  });
+  summaries.forEach(s => addSummaryEntry(s));
+}
+
+function addSummaryEntry(data = {}) {
+  const container = $('summaries-list');
+  const row = document.createElement('div');
+  row.className = 'summary-entry';
+  row.style.marginBottom = '12px';
+  row.innerHTML = `
+    <input type="text" class="summary-label-input" value="${escHtml(data.label || 'Summary')}" placeholder="Style (e.g. Modern)" style="width:140px; font-weight:600" /> 
+    <textarea class="summary-text-input" rows="3" style="flex:1" placeholder="Paste summary text here...">${escHtml(data.text || '')}</textarea> 
+    <button onclick="this.parentElement.remove()" class="btn-remove">✕</button>
+  `;
+  container.appendChild(row);
 }
 
 function addExperienceEntry(data = {}) {

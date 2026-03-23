@@ -79,6 +79,7 @@ export const DEFAULT_RESUME_CONTENT = {
     website: '',
   },
   summary: '',
+  summaries: [],
   experience: [],
   education: [],
   skills: [],
@@ -107,6 +108,10 @@ export function normalizeResumeContent(data = {}) {
   return {
     personalInfo: { ...base.personalInfo, ...(data.personalInfo || data.personal || {}) },
     summary: data.summary || (data.summaries?.[0]?.text) || '',
+    summaries: Array.isArray(data.summaries) ? data.summaries.map(s => ({
+      label: s.label || 'Summary',
+      text: s.text || ''
+    })) : [],
     experience: (data.experience || []).map(exp => ({
       jobTitle: exp.jobTitle || exp.title || '',
       employer: exp.employer || exp.company || '',

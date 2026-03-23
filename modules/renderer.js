@@ -45,10 +45,12 @@ export function renderDocument(templateId, type, data, options = {}) {
           --accent-color: ${accentColor};
           --spacing-factor: ${spacingMode === 'compact' ? '0.8' : '1.0'};
         }
-        body {
+        html, body {
+          color-scheme: light !important;
+          background: white !important;
+          color: #1a1a1a !important;
           margin: 0;
           padding: 0;
-          background: #f0f2f5;
           display: flex;
           justify-content: center;
           -webkit-print-color-adjust: exact;

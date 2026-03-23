@@ -332,7 +332,7 @@ async function savePdf(types) {
       const draft = state.drafts[type];
       if (!draft || !frame) continue;
 
-      const element = frame.contentDocument.body;
+      const element = frame.contentDocument.querySelector('.page-preview');
       const typeLabel = type === 'resume' ? 'Resume' : 'Cover Letter';
       const filename = buildFilename('{docType} - {company} - {jobTitle}.pdf', { ...state.jobData, docType: typeLabel });
 
