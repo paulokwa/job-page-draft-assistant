@@ -85,9 +85,9 @@ export function render(data) {
 
       ${experience.length ? `
         <section class="section">
-          <h2 class="section-title">Experience</h2>
+          <h2 class="section-title no-orphan">Experience</h2>
           ${experience.map(exp => `
-            <div class="item">
+            <div class="item keep-together">
               <div class="item-header">
                 <span>${exp.jobTitle} @ ${exp.employer}</span>
                 <span>${exp.startDate} – ${exp.endDate}</span>
@@ -103,9 +103,9 @@ export function render(data) {
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10pt;">
         ${education.length ? `
           <section class="section">
-            <h2 class="section-title">Education</h2>
+            <h2 class="section-title no-orphan">Education</h2>
             ${education.map(edu => `
-              <div class="item">
+              <div class="item keep-together">
                 <div style="font-weight:700;">${edu.institution}</div>
                 <div>${edu.credential} | ${edu.dates}</div>
               </div>
@@ -114,8 +114,8 @@ export function render(data) {
         ` : ''}
 
         ${skills.length ? `
-          <section class="section">
-            <h2 class="section-title">Skills</h2>
+          <section class="section keep-together">
+            <h2 class="section-title no-orphan">Skills</h2>
             <div class="skills-grid">
               ${skills.map(s => `<div>• ${s}</div>`).join('')}
             </div>
@@ -125,9 +125,9 @@ export function render(data) {
 
       ${projects.length ? `
         <section class="section">
-          <h2 class="section-title">Key Projects</h2>
+          <h2 class="section-title no-orphan">Key Projects</h2>
           ${projects.map(proj => `
-            <div class="item" style="margin-bottom: 2pt;">
+            <div class="item keep-together" style="margin-bottom: 2pt;">
               <strong>${proj.name}</strong> – ${proj.description}
             </div>
           `).join('')}
@@ -161,7 +161,7 @@ export function renderCoverLetter(data) {
           ${content.paragraphs.map(p => `<p style="margin-bottom: 10pt;">${p}</p>`).join('')}
         </div>
 
-        <div style="margin-top: 30pt;">
+        <div class="keep-together" style="margin-top: 30pt;">
           <strong>${content.closing || 'Sincerely,'}</strong><br>
           <span style="font-weight: 800; text-transform: uppercase;">${content.signOff || personalInfo.fullName}</span>
         </div>

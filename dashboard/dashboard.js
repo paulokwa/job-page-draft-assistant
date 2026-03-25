@@ -68,10 +68,10 @@ const dom = {
   btnApplyChanges:    $('btn-apply-changes'),
   btnRegenerate:      $('btn-regenerate'),
   
-  btnSavePdf:         $('btn-save-pdf'),
+  btnPrintBoth:       $('btn-print-both'),
+  btnPrintCL:         $('btn-print-cl'),
   btnSaveResume:      $('btn-save-resume'),
   btnSaveCL:          $('btn-save-cl'),
-  btnPrint:           $('btn-print'),
   
   toast:              $('toast'),
   btnSettings:        $('btn-settings'),
@@ -203,11 +203,13 @@ function bindEvents() {
   dom.btnApplyChanges.addEventListener('click', applyRevision);
   dom.btnRegenerate.addEventListener('click', () => runGeneration(state.currentTab));
 
-  // Export
-  dom.btnSavePdf.addEventListener('click', () => savePdf(['resume', 'cover-letter']));
+  // Export — primary (native print, best quality)
+  dom.btnPrintBoth.addEventListener('click', () => printDraft('resume', 'cover-letter'));
+  dom.btnPrintCL.addEventListener('click', () => printDraft('cover-letter'));
+
+  // Export — secondary (html2pdf quick fallback)
   dom.btnSaveResume.addEventListener('click', () => savePdf(['resume']));
   dom.btnSaveCL.addEventListener('click', () => savePdf(['cover-letter']));
-  dom.btnPrint.addEventListener('click', () => printDraft());
 
   // Error Retry
   dom.btnErrorRetry.addEventListener('click', () => {
@@ -352,7 +354,8 @@ async function savePdf(types) {
           letterRendering: true, // Better for text quality
           logging: false
         },
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait', compress: true }
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait', compress: true },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
       };
 
       await html2pdf().set(opt).from(element).save();
@@ -364,50 +367,49 @@ async function savePdf(types) {
   }
 }
 
-function printDraft() {
-  const tab = state.currentTab;
-  const draft = state.drafts[tab];
-  if (!draft) {
-    showToast(`⚠️ No ${tab} content to print yet.`);
+function printDraft(...types) {
+  // If no types specified, default to the currently active tab
+  const targets = types.length ? types : [state.currentTab];
+
+  // Validate we have content to print
+  const validTargets = targets.filter(tab => !!state.drafts[tab]);
+  if (!validTargets.length) {
+    showToast(`⚠️ No content to print yet.`);
     return;
   }
 
-  showToast('🖨️ Opening print preview...');
-
-  // Prepare the data for rendering
   const options = {
     accentColor: state.accentColor,
     spacingMode: state.spacingMode
   };
-  const data = tab === 'resume' 
-    ? { ...draft, personalInfo: state.profile.personalInfo }
-    : { personalInfo: state.profile.personalInfo, content: draft };
 
-  // Render the full HTML
-  const html = renderDocument(state.templateId, tab, data, options);
+  for (const tab of validTargets) {
+    const draft = state.drafts[tab];
+    const data = tab === 'resume'
+      ? { ...draft, personalInfo: state.profile.personalInfo }
+      : { personalInfo: state.profile.personalInfo, content: draft };
 
-  // Open a new temporary window for printing
-  const printWin = window.open('', '_blank');
-  if (!printWin) {
-    showToast('❌ Pop-up blocked! Please allow pop-ups for this extension.');
-    return;
+    const html = renderDocument(state.templateId, tab, data, options);
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      showToast('❌ Pop-up blocked! Please allow pop-ups for this extension.');
+      return;
+    }
+
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+
+    showToast('🖨️ Opening print preview — choose "Save as PDF" for best results.');
+
+    printWin.onload = () => {
+      printWin.focus();
+      setTimeout(() => {
+        printWin.print();
+      }, 300);
+    };
   }
-
-  // Inject content
-  printWin.document.open();
-  printWin.document.write(html);
-  printWin.document.close();
-
-  // Wait for resources (fonts, etc.) then print
-  printWin.onload = () => {
-    printWin.focus();
-    // Small delay helps ensure rendering is settled
-    setTimeout(() => {
-      printWin.print();
-      // We don't auto-close the window because some browsers block the print dialog if closed immediately,
-      // and it serves as a nice "Print Preview" tab for the user.
-    }, 300);
-  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -458,11 +460,12 @@ function hideError() { dom.genError.classList.add('hidden'); }
 function refreshExportButtons() {
   const hasResume = !!state.drafts.resume;
   const hasCL = !!state.drafts['cover-letter'];
-  const hasAny = hasResume || hasCL;
-  const hasCurrent = !!state.drafts[state.currentTab];
 
-  dom.btnSavePdf.disabled = !hasAny;
-  dom.btnPrint.disabled = !hasCurrent;
+  // Primary print buttons
+  dom.btnPrintBoth.disabled = !hasResume; // prints resume; CL is separate
+  dom.btnPrintCL.disabled = !hasCL;
+
+  // Quick PDF fallback
   dom.btnSaveResume.disabled = !hasResume;
   dom.btnSaveCL.disabled = !hasCL;
 }

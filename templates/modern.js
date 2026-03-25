@@ -130,16 +130,16 @@ export function render(data) {
 
       ${summary ? `
         <section class="section">
-          <h2 class="section-title">Summary</h2>
+          <h2 class="section-title no-orphan">Summary</h2>
           <div class="summary">${summary}</div>
         </section>
       ` : ''}
 
       ${experience.length ? `
         <section class="section">
-          <h2 class="section-title">Experience</h2>
+          <h2 class="section-title no-orphan">Experience</h2>
           ${experience.map(exp => `
-            <div class="item">
+            <div class="item keep-together">
               <div class="item-header">
                 <span class="job-title">${exp.jobTitle}</span>
                 <span class="date-range">${exp.startDate} – ${exp.endDate}</span>
@@ -154,8 +154,8 @@ export function render(data) {
       ` : ''}
 
       ${skills.length ? `
-        <section class="section">
-          <h2 class="section-title">Skills</h2>
+        <section class="section keep-together">
+          <h2 class="section-title no-orphan">Skills</h2>
           <div class="skills-container">
             ${skills.map(skill => `<span class="skill-pill">${skill}</span>`).join('')}
           </div>
@@ -164,9 +164,9 @@ export function render(data) {
 
       ${education.length ? `
         <section class="section">
-          <h2 class="section-title">Education</h2>
+          <h2 class="section-title no-orphan">Education</h2>
           ${education.map(edu => `
-            <div class="item">
+            <div class="item keep-together">
               <div class="item-header">
                 <span class="job-title">${edu.credential}</span>
                 <span class="date-range">${edu.dates}</span>
@@ -179,9 +179,9 @@ export function render(data) {
 
       ${projects.length ? `
         <section class="section">
-          <h2 class="section-title">Projects</h2>
+          <h2 class="section-title no-orphan">Projects</h2>
           ${projects.map(proj => `
-            <div class="item">
+            <div class="item keep-together">
               <div class="item-header">
                 <span class="job-title">${proj.name}</span>
                 <span class="date-range">${proj.role}</span>
@@ -224,7 +224,7 @@ export function renderCoverLetter(data) {
           ${content.paragraphs.map(p => `<p style="margin-bottom: 14pt;">${p}</p>`).join('')}
         </div>
 
-        <div style="margin-top: 30pt; color: #1e293b;">
+        <div class="keep-together" style="margin-top: 30pt; color: #1e293b;">
           <div style="margin-bottom: 4pt; color: #64748b;">${content.closing || 'Best regards,'}</div>
           <div style="font-size: 12pt; font-weight: 700;">${content.signOff || personalInfo.fullName}</div>
         </div>

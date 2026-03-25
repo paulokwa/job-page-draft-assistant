@@ -129,7 +129,7 @@ export function render(data) {
   return `
     <div class="resume-container">
       <aside class="sidebar">
-        <div class="sidebar-section">
+        <div class="sidebar-section keep-together">
           <h2 class="sidebar-section-title">Contact</h2>
           <ul class="contact-list">
             ${personalInfo.email ? `<li><strong>Email:</strong><br>${personalInfo.email}</li>` : ''}
@@ -140,7 +140,7 @@ export function render(data) {
         </div>
 
         ${skills.length ? `
-          <div class="sidebar-section">
+          <div class="sidebar-section keep-together">
             <h2 class="sidebar-section-title">Expertise</h2>
             <div class="pill-container">
               ${skills.map(s => `<span class="pill">${s}</span>`).join('')}
@@ -149,7 +149,7 @@ export function render(data) {
         ` : ''}
 
         ${education.length ? `
-          <div class="sidebar-section">
+          <div class="sidebar-section keep-together">
             <h2 class="sidebar-section-title">Education</h2>
             ${education.map(edu => `
               <div style="margin-bottom:10pt; font-size:9pt;">
@@ -162,7 +162,7 @@ export function render(data) {
         ` : ''}
 
         ${certifications.length ? `
-          <div class="sidebar-section">
+          <div class="sidebar-section keep-together">
             <h2 class="sidebar-section-title">Certs</h2>
             <ul class="contact-list">
               ${certifications.map(c => `<li>${c}</li>`).join('')}
@@ -178,17 +178,17 @@ export function render(data) {
         </header>
 
         ${summary ? `
-          <section>
-            <h2 class="main-section-title">About Me</h2>
+          <section class="keep-together">
+            <h2 class="main-section-title no-orphan">About Me</h2>
             <div class="summary">${summary}</div>
           </section>
         ` : ''}
 
         ${experience.length ? `
           <section>
-            <h2 class="main-section-title">Professional Experience</h2>
+            <h2 class="main-section-title no-orphan">Professional Experience</h2>
             ${experience.map(exp => `
-              <div class="experience-item">
+              <div class="experience-item keep-together">
                 <div class="exp-header">
                   <span>${exp.jobTitle}</span>
                   <span style="font-size:9pt; color:#64748b;">${exp.startDate} – ${exp.endDate}</span>
@@ -204,9 +204,9 @@ export function render(data) {
 
         ${projects.length ? `
           <section>
-            <h2 class="main-section-title">Key Projects</h2>
+            <h2 class="main-section-title no-orphan">Key Projects</h2>
             ${projects.map(proj => `
-              <div class="experience-item">
+              <div class="experience-item keep-together">
                 <div class="exp-header">
                   <span>${proj.name}</span>
                   <span style="font-size:9pt; color:#64748b;">${proj.role}</span>
@@ -257,7 +257,7 @@ export function renderCoverLetter(data) {
           ${content.paragraphs.map(p => `<p style="margin-bottom: 15pt;">${p}</p>`).join('')}
         </div>
 
-        <div style="margin-top: 40pt;">
+        <div class="keep-together" style="margin-top: 40pt;">
           <div style="color: #64748b; margin-bottom: 8pt;">${content.closing || 'Sincerely,'}</div>
           <div style="font-weight: 700; color: #0f172a; font-size: 12pt;">${content.signOff || personalInfo.fullName}</div>
         </div>

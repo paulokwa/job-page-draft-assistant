@@ -80,6 +80,16 @@ export function renderDocument(templateId, type, data, options = {}) {
           .bullets li { margin-bottom: 1pt; }
         ` : ''}
 
+        .keep-together {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        
+        .no-orphan {
+          page-break-after: avoid;
+          break-after: avoid;
+        }
+
         @media print {
           body { 
             background: white !important; 

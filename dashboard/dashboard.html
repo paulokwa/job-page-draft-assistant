@@ -213,14 +213,22 @@
           <span class="card-title">💾 Export</span>
         </div>
         <div class="save-buttons">
-          <div class="btn-group-row" style="margin-bottom: 8px;">
-            <button id="btn-save-pdf" class="btn-confirm" style="width: 100%;" disabled>📥 Download Both (PDF)</button>
-            <button id="btn-print" class="btn-primary" style="width: 100%;" disabled>🖨️ Print (Best Quality)</button>
+          <!-- Primary: Native print flow (best quality) -->
+          <div class="btn-group-row" style="margin-bottom: 4px;">
+            <button id="btn-print-both" class="btn-confirm" style="width: 100%;" disabled>🖨️ Print Resume + Cover Letter</button>
+            <button id="btn-print-cl" class="btn-confirm" style="width: 100%;" disabled>🖨️ Print Cover Letter Only</button>
+          </div>
+          <p class="export-hint">💡 Use <strong>Save as PDF</strong> in the print dialog for best results.</p>
+
+          <!-- Secondary: Quick html2pdf download (fallback) -->
+          <div class="export-divider">
+            <span>Quick Download</span>
           </div>
           <div class="btn-group-row">
-            <button id="btn-save-resume" class="btn-secondary" title="Download Resume only" disabled>Resume PDF</button>
-            <button id="btn-save-cl" class="btn-secondary" title="Download Cover Letter only" disabled>CV PDF</button>
+            <button id="btn-save-resume" class="btn-secondary" title="Quick PDF — may have formatting issues" disabled>⚠️ Resume PDF</button>
+            <button id="btn-save-cl" class="btn-secondary" title="Quick PDF — may have formatting issues" disabled>⚠️ Cover Letter PDF</button>
           </div>
+          <p class="export-hint export-hint-warn">⚠️ Quick PDF may have pagination or font issues.</p>
         </div>
       </section>
 
