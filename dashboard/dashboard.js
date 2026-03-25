@@ -300,7 +300,7 @@ function updatePreviews() {
     };
     const html = renderDocument(state.templateId, 'resume', resumeData, options);
     injectToIframe(dom.previewResumeFrame, html);
-    enableExportControls(true);
+    refreshExportButtons();
   }
 
   if (state.drafts['cover-letter']) {
@@ -313,8 +313,8 @@ function updatePreviews() {
     };
     const html = renderDocument(state.templateId, 'cover-letter', clData, options);
     injectToIframe(dom.previewCLFrame, html);
-    enableExportControls(true);
   }
+  refreshExportButtons();
 }
 
 function injectToIframe(iframe, html) {
@@ -365,12 +365,49 @@ async function savePdf(types) {
 }
 
 function printDraft() {
-  const frame = state.currentTab === 'resume' ? dom.previewResumeFrame : dom.previewCLFrame;
-  if (!frame) return;
-  
-  // Focus and Print
-  frame.contentWindow.focus();
-  frame.contentWindow.print();
+  const tab = state.currentTab;
+  const draft = state.drafts[tab];
+  if (!draft) {
+    showToast(`⚠️ No ${tab} content to print yet.`);
+    return;
+  }
+
+  showToast('🖨️ Opening print preview...');
+
+  // Prepare the data for rendering
+  const options = {
+    accentColor: state.accentColor,
+    spacingMode: state.spacingMode
+  };
+  const data = tab === 'resume' 
+    ? { ...draft, personalInfo: state.profile.personalInfo }
+    : { personalInfo: state.profile.personalInfo, content: draft };
+
+  // Render the full HTML
+  const html = renderDocument(state.templateId, tab, data, options);
+
+  // Open a new temporary window for printing
+  const printWin = window.open('', '_blank');
+  if (!printWin) {
+    showToast('❌ Pop-up blocked! Please allow pop-ups for this extension.');
+    return;
+  }
+
+  // Inject content
+  printWin.document.open();
+  printWin.document.write(html);
+  printWin.document.close();
+
+  // Wait for resources (fonts, etc.) then print
+  printWin.onload = () => {
+    printWin.focus();
+    // Small delay helps ensure rendering is settled
+    setTimeout(() => {
+      printWin.print();
+      // We don't auto-close the window because some browsers block the print dialog if closed immediately,
+      // and it serves as a nice "Print Preview" tab for the user.
+    }, 300);
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -381,6 +418,7 @@ function switchTab(tab) {
   dom.tabPanels.forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
   dom.btnApplyChanges.disabled = !state.drafts[tab];
   dom.btnRegenerate.disabled = !state.drafts[tab];
+  refreshExportButtons();
 }
 
 async function validateForGeneration(mode) {
@@ -417,20 +455,37 @@ function showError(err) {
 
 function hideError() { dom.genError.classList.add('hidden'); }
 
-function enableExportControls(on) {
-  dom.btnSavePdf.disabled = !on;
-  dom.btnSaveResume.disabled = !on;
-  dom.btnSaveCL.disabled = !on;
-  dom.btnPrint.disabled = !on;
+function refreshExportButtons() {
+  const hasResume = !!state.drafts.resume;
+  const hasCL = !!state.drafts['cover-letter'];
+  const hasAny = hasResume || hasCL;
+  const hasCurrent = !!state.drafts[state.currentTab];
+
+  dom.btnSavePdf.disabled = !hasAny;
+  dom.btnPrint.disabled = !hasCurrent;
+  dom.btnSaveResume.disabled = !hasResume;
+  dom.btnSaveCL.disabled = !hasCL;
 }
 
 let toastTimer;
 function showToast(msg) {
   dom.toast.textContent = msg;
-  dom.toast.classList.add('show');
   dom.toast.classList.remove('hidden');
+  // Small delay to allow 'hidden' removal to take effect before adding 'show' for transition
+  requestAnimationFrame(() => {
+    dom.toast.classList.add('show');
+  });
+
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => dom.toast.classList.remove('show'), 3000);
+  toastTimer = setTimeout(() => {
+    dom.toast.classList.remove('show');
+    // Wait for transition to finish before hiding
+    setTimeout(() => {
+      if (!dom.toast.classList.contains('show')) {
+        dom.toast.classList.add('hidden');
+      }
+    }, 400);
+  }, 3000);
 }
 
 async function loadSettings() {

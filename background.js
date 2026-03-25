@@ -1,54 +1,50 @@
 // background.js — Service Worker
 // Registers context menu and routes messages between content script and dashboard.
 
-const MENU_ITEMS = [
-  { id: 'create-resume', title: 'Create Resume' },
-  { id: 'create-cover-letter', title: 'Create Cover Letter' },
-  { id: 'create-both', title: 'Create Both' },
-];
+// No sub-menu items needed now. Extraction is triggered by clicking the main menu item.
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(() => {
-  // Allow users to open the side panel by clicking on the action toolbar icon
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error) => console.error(error));
+  // Disable side panel globally so it only shows on specific tabs when requested
+  chrome.sidePanel.setOptions({ enabled: false }).catch((error) => console.error(error));
 
-  // Create parent menu item
-  chrome.contextMenus.create({
-    id: 'jpda-parent',
-    title: 'Job Page Draft Assistant',
-    contexts: ['page', 'selection'],
-  });
-
-  MENU_ITEMS.forEach(item => {
+  // Clear any existing menu items first
+  chrome.contextMenus.removeAll(() => {
+    // Create main menu item
     chrome.contextMenus.create({
-      id: item.id,
-      parentId: 'jpda-parent',
-      title: item.title,
+      id: 'jpda-main',
+      title: 'Job Page Draft Assistant',
       contexts: ['page', 'selection'],
     });
   });
 });
 
+// ── Action Icon Click ───────────────────────────────────────────────────────
+
+// If the user clicks the toolbar icon, enable and open for current tab
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.setOptions({
+    tabId: tab.id,
+    path: 'dashboard/dashboard.html',
+    enabled: true
+  });
+  chrome.sidePanel.open({ tabId: tab.id }).catch(err => console.error('Failed to open side panel via action:', err));
+});
+
 // ── Context Menu Click ─────────────────────────────────────────────────────
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  const menuIds = MENU_ITEMS.map(m => m.id);
-  if (!menuIds.includes(info.menuItemId)) return;
+  if (info.menuItemId !== 'jpda-main') return;
 
   // 1. OPEN SIDE PANEL IMMEDIATELY (Must be synchronous for user gesture)
   chrome.sidePanel.setOptions({ tabId: tab.id, path: 'dashboard/dashboard.html', enabled: true });
-  chrome.sidePanel.open({ tabId: tab.id }).catch(err => console.error('Failed to open side panel:', err));
+  chrome.sidePanel.open({ tabId: tab.id }).catch(err => console.error('Failed to open side panel via context menu:', err));
 
   // 2. RUN ASYNC LOGIC IN BACKGROUND
   (async () => {
-    // Map menu id to mode
-    const modeMap = {
-      'create-resume': 'resume',
-      'create-cover-letter': 'cover-letter',
-      'create-both': 'both',
-    };
-    const mode = modeMap[info.menuItemId];
+    // Default mode is 'both' since sub-menus are removed.
+    const mode = 'both';
 
     // Store mode so dashboard can read it on open
     await chrome.storage.session.set({ pendingMode: mode });

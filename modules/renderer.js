@@ -47,14 +47,13 @@ export function renderDocument(templateId, type, data, options = {}) {
         }
         html, body {
           color-scheme: light !important;
-          background: white !important;
+          background: transparent !important; /* Let parent background show through slightly if needed, or use white */
           color: #1a1a1a !important;
           margin: 0;
-          padding: 0;
-          display: flex;
-          justify-content: center;
+          padding: 20px 0; /* Vertical breathing room */
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
+          min-height: 100%;
         }
         * {
           box-sizing: border-box;
@@ -62,11 +61,12 @@ export function renderDocument(templateId, type, data, options = {}) {
         
         .page-preview {
           background: white;
-          width: 8.5in;
+          width: 100%;
+          max-width: 8.5in;
           min-height: 11in;
           padding: 0.5in;
-          box-shadow: 0 0 10px rgba(0,0,0,0.1);
-          margin: 20px;
+          box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+          margin: 0 auto;
           overflow: hidden;
           position: relative;
         }
