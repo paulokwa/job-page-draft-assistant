@@ -167,6 +167,7 @@
           <div class="tab-bar">
             <button class="tab-btn active" data-tab="resume">Resume</button>
             <button class="tab-btn" data-tab="cover-letter">Cover Letter</button>
+            <button class="tab-btn hidden" id="tab-btn-merged" data-tab="merged">Merged</button>
           </div>
         </div>
 
@@ -187,6 +188,16 @@
           </div>
           <div id="draft-cl-content" class="draft-preview-wrapper hidden">
             <iframe id="preview-cl-frame" class="preview-frame"></iframe>
+          </div>
+        </div>
+
+        <div id="tab-merged" class="tab-panel">
+          <div id="draft-merged-empty" class="draft-empty">
+            <div class="draft-empty-icon">📄📄</div>
+            <p>Your merged preview will appear here.</p>
+          </div>
+          <div id="draft-merged-content" class="draft-preview-wrapper hidden">
+            <iframe id="preview-merged-frame" class="preview-frame"></iframe>
           </div>
         </div>
       </section>
@@ -218,6 +229,7 @@
             <button id="btn-print-both" class="btn-confirm" style="width: 100%;" disabled>🖨️ Print Resume + Cover Letter</button>
             <button id="btn-print-cl" class="btn-confirm" style="width: 100%;" disabled>🖨️ Print Cover Letter Only</button>
           </div>
+          <button id="btn-print-merged" class="btn-confirm hidden" style="width: 100%; margin-bottom: 4px;" disabled>🖨️ Print Merged (One Doc)</button>
           <p class="export-hint">💡 Use <strong>Save as PDF</strong> in the print dialog for best results.</p>
 
           <!-- Secondary: Quick html2pdf download (fallback) -->

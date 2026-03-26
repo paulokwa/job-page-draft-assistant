@@ -3,7 +3,7 @@
 import { extractJobFields } from '../modules/extraction.js';
 import { generateResume, generateCoverLetter, reviseDraft } from '../modules/drafting.js';
 import { loadProfile } from '../modules/profile.js';
-import { renderDocument } from '../modules/renderer.js';
+import { renderDocument, renderMergedDocument } from '../modules/renderer.js';
 import { buildFilename, downloadBlob } from '../modules/template.js';
 import { mapError } from '../modules/errorMapper.js';
 
@@ -59,10 +59,14 @@ const dom = {
   
   previewResumeFrame: $('preview-resume-frame'),
   previewCLFrame:     $('preview-cl-frame'),
+  previewMergedFrame: $('preview-merged-frame'),
   draftResumeEmpty:   $('draft-resume-empty'),
   draftResumeContent: $('draft-resume-content'),
   draftCLEmpty:       $('draft-cl-empty'),
   draftCLContent:     $('draft-cl-content'),
+  draftMergedEmpty:   $('draft-merged-empty'),
+  draftMergedContent: $('draft-merged-content'),
+  tabBtnMerged:       $('tab-btn-merged'),
   
   fieldRevision:      $('field-revision'),
   btnApplyChanges:    $('btn-apply-changes'),
@@ -70,6 +74,7 @@ const dom = {
   
   btnPrintBoth:       $('btn-print-both'),
   btnPrintCL:         $('btn-print-cl'),
+  btnPrintMerged:     $('btn-print-merged'),
   btnSaveResume:      $('btn-save-resume'),
   btnSaveCL:          $('btn-save-cl'),
   
@@ -206,6 +211,7 @@ function bindEvents() {
   // Export — primary (native print, best quality)
   dom.btnPrintBoth.addEventListener('click', () => printDraft('resume', 'cover-letter'));
   dom.btnPrintCL.addEventListener('click', () => printDraft('cover-letter'));
+  dom.btnPrintMerged.addEventListener('click', () => printDraft('merged'));
 
   // Export — secondary (html2pdf quick fallback)
   dom.btnSaveResume.addEventListener('click', () => savePdf(['resume']));
@@ -254,6 +260,15 @@ async function runGeneration(mode) {
     }
 
     updatePreviews();
+    
+    if (mode === 'both') {
+      dom.tabBtnMerged.classList.remove('hidden');
+      dom.btnPrintMerged.classList.remove('hidden');
+    } else {
+      dom.tabBtnMerged.classList.add('hidden');
+      dom.btnPrintMerged.classList.add('hidden');
+    }
+
     switchTab(toGenerate[0]);
     showToast('✨ Drafts ready!');
   } catch (e) {
@@ -316,6 +331,22 @@ function updatePreviews() {
     const html = renderDocument(state.templateId, 'cover-letter', clData, options);
     injectToIframe(dom.previewCLFrame, html);
   }
+
+  if (state.drafts.resume && state.drafts['cover-letter']) {
+    dom.draftMergedEmpty.classList.add('hidden');
+    dom.draftMergedContent.classList.remove('hidden');
+    const resumeData = {
+      ...state.drafts.resume,
+      personalInfo: state.profile.personalInfo
+    };
+    const clData = {
+      personalInfo: state.profile.personalInfo,
+      content: state.drafts['cover-letter']
+    };
+    const html = renderMergedDocument(state.templateId, resumeData, clData, options);
+    injectToIframe(dom.previewMergedFrame, html);
+  }
+
   refreshExportButtons();
 }
 
@@ -372,10 +403,17 @@ function printDraft(...types) {
   const targets = types.length ? types : [state.currentTab];
 
   // Validate we have content to print
-  const validTargets = targets.filter(tab => !!state.drafts[tab]);
-  if (!validTargets.length) {
-    showToast(`⚠️ No content to print yet.`);
-    return;
+  if (targets.includes('merged')) {
+    if (!state.drafts.resume || !state.drafts['cover-letter']) {
+      showToast('⚠️ Both resume and cover letter must be ready.');
+      return;
+    }
+  } else {
+    const validTargets = targets.filter(tab => !!state.drafts[tab]);
+    if (!validTargets.length) {
+      showToast(`⚠️ No content to print yet.`);
+      return;
+    }
   }
 
   const options = {
@@ -383,7 +421,27 @@ function printDraft(...types) {
     spacingMode: state.spacingMode
   };
 
-  for (const tab of validTargets) {
+  if (targets.includes('merged')) {
+    const resumeData = { ...state.drafts.resume, personalInfo: state.profile.personalInfo };
+    const clData = { personalInfo: state.profile.personalInfo, content: state.drafts['cover-letter'] };
+    const html = renderMergedDocument(state.templateId, resumeData, clData, options);
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      showToast('❌ Pop-up blocked! Please allow pop-ups for this extension.');
+      return;
+    }
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
+    showToast('🖨️ Opening print preview — choose "Save as PDF" for best results.');
+    printWin.onload = () => {
+      printWin.focus();
+      setTimeout(() => { printWin.print(); }, 300);
+    };
+    return;
+  }
+
+  for (const tab of targets.filter(t => !!state.drafts[t])) {
     const draft = state.drafts[tab];
     const data = tab === 'resume'
       ? { ...draft, personalInfo: state.profile.personalInfo }
@@ -468,6 +526,8 @@ function refreshExportButtons() {
   // Quick PDF fallback
   dom.btnSaveResume.disabled = !hasResume;
   dom.btnSaveCL.disabled = !hasCL;
+
+  dom.btnPrintMerged.disabled = !(hasResume && hasCL);
 }
 
 let toastTimer;
